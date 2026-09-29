@@ -1,0 +1,37 @@
+<view class="page">
+  <view class="timer-face">
+    <view class="elapsed">{{elapsedText}}</view>
+    <view wx:if="{{running}}" class="running-since">开始于 {{runningSince}} · 可在任意设备停止</view>
+  </view>
+
+  <input class="title-input" type="text" placeholder="在做什么？" maxlength="100"
+    value="{{title}}" bindinput="onTitleInput" bindblur="onTitleBlur" />
+
+  <view class="category-row">
+    <view wx:for="{{categories}}" wx:key="id"
+      class="cat-chip {{selectedCategoryId === item.id ? 'selected' : ''}}"
+      data-id="{{item.id}}" bindtap="toggleCategory">
+      <view class="dot" style="background:{{item.color}}"></view>{{item.name}}
+    </view>
+  </view>
+
+  <button class="btn-big {{running ? 'btn-stop' : 'btn-start'}}" bindtap="toggleTimer">
+    {{running ? '停止' : '开始'}}
+  </button>
+
+  <view class="hint">开始后即使退出小程序，计时也不会中断</view>
+
+  <!-- 快速标签面板（停止后弹出） -->
+  <view wx:if="{{showTagPanel}}" class="tag-mask" bindtap="skipTag">
+    <view class="tag-panel" catchtap="">
+      <view class="tag-panel-title">这段时间算哪类？</view>
+      <view class="tag-panel-info">{{tagPanelInfo}}</view>
+      <view class="tag-chips">
+        <view wx:for="{{categories}}" wx:key="id" class="cat-chip" data-id="{{item.id}}" bindtap="applyTag">
+          <view class="dot" style="background:{{item.color}}"></view>{{item.name}}
+        </view>
+      </view>
+      <view class="tag-skip" bindtap="skipTag">跳过，稍后补充</view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,23 @@
+.page { padding: 24rpx 32rpx; }
+
+.day-label {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #8a91a3;
+  margin: 32rpx 8rpx 16rpx;
+}
+
+.entry-item {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 26rpx 28rpx;
+  margin-bottom: 16rpx;
+}
+.entry-main { flex: 1; min-width: 0; }
+.entry-title-row { display: flex; align-items: center; gap: 12rpx; }
+.dot { width: 16rpx; height: 16rpx; border-radius: 50%; }
+.entry-title { font-size: 30rpx; font-weight: 600; }
+.entry-meta { color: #8a91a3; font-size: 24rpx; margin-top: 6rpx; }
+.btn-del { color: #c4c9d6; font-size: 32rpx; padding: 12rpx 16rpx; }

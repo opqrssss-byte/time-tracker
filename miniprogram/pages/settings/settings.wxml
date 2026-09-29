@@ -1,0 +1,33 @@
+<view class="page">
+  <view class="card">
+    <view class="card-title">分类管理</view>
+    <view wx:for="{{categories}}" wx:key="id" class="cat-row">
+      <view class="dot" style="background:{{item.color}}"></view>
+      <text class="cat-name">{{item.name}}</text>
+      <view class="btn-del" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="deleteCategory">✕</view>
+    </view>
+    <view wx:if="{{categories.length === 0}}" class="empty">暂无分类</view>
+
+    <view class="add-row">
+      <input class="add-input" type="text" placeholder="新分类名称" maxlength="20"
+        value="{{newCatName}}" bindinput="onNewCatName" />
+      <view class="color-picker">
+        <view wx:for="{{presetColors}}" wx:key="*this"
+          class="color-dot {{newCatColor === item ? 'picked' : ''}}"
+          style="background:{{item}}" data-color="{{item}}" bindtap="pickColor"></view>
+      </view>
+      <button class="btn-secondary add-btn" size="mini" bindtap="addCategory">添加</button>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">统计与导出</view>
+    <view class="card-text">统计图表和数据导出（CSV / Excel）请在网页版使用，数据实时互通。</view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">账号</view>
+    <view class="card-text">{{userEmail}}</view>
+    <button class="logout-btn" bindtap="signOut">退出登录</button>
+  </view>
+</view>

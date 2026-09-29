@@ -1,0 +1,28 @@
+{
+  "name": "time-tracker-widget",
+  "version": "1.0.0",
+  "description": "时间追踪桌面悬浮组件",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.timetracker.widget",
+    "productName": "时间追踪",
+    "win": {
+      "target": "portable",
+      "icon": "icon.ico"
+    },
+    "portable": {
+      "artifactName": "时间追踪-桌面组件.exe"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}

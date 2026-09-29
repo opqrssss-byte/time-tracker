@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>时间追踪</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsrsasign@11.1.0/lib/jsrsasign-all-min.js"></script>
+</head>
+<body>
+
+<div id="offline-banner" class="offline-banner hidden">当前离线，恢复网络后可继续操作</div>
+
+<!-- ========== 桌面胶囊模式（?widget=1，供 Electron 悬浮窗使用） ========== -->
+<div id="view-widget" class="view hidden">
+  <div id="capsule" class="capsule idle">
+    <span id="capsule-dot" class="capsule-dot"></span>
+    <span id="capsule-time" class="capsule-time">00:00:00</span>
+  </div>
+  <div id="widget-tagbar" class="widget-tagbar hidden">
+    <div class="widget-tagbar-title">这段是什么？</div>
+    <div id="widget-tags" class="widget-tags"></div>
+    <button id="widget-tag-skip" class="btn-link" type="button">跳过</button>
+  </div>
+  <div id="widget-login" class="widget-login hidden">
+    <span class="widget-login-text">未登录</span>
+    <button id="btn-widget-login" class="btn-secondary" type="button">打开完整版登录</button>
+  </div>
+</div>
+
+<!-- 登录视图 -->
+<div id="view-login" class="view hidden">
+  <div class="login-card">
+    <div class="logo">⏱</div>
+    <h1>时间追踪</h1>
+    <p class="subtitle">点一下开始，时间自动记录</p>
+
+    <div class="login-tabs">
+      <button id="tab-otp" class="login-tab active" type="button">验证码登录</button>
+      <button id="tab-pwd" class="login-tab" type="button">密码登录</button>
+    </div>
+
+    <!-- 验证码登录 -->
+    <form id="form-otp" class="login-form">
+      <input id="otp-email" type="email" placeholder="邮箱地址" required autocomplete="email">
+      <div class="code-row">
+        <input id="otp-code" type="text" inputmode="numeric" placeholder="验证码" autocomplete="one-time-code">
+        <button id="btn-send-code" type="button" class="btn-secondary">获取验证码</button>
+      </div>
+      <div id="otp-password-row" class="hidden">
+        <input id="otp-password" type="password" placeholder="首次登录请设置密码（至少6位）" minlength="6" autocomplete="new-password">
+      </div>
+      <button type="submit" class="btn-primary">登录 / 注册</button>
+    </form>
+
+    <!-- 密码登录 -->
+    <form id="form-pwd" class="login-form hidden">
+      <input id="pwd-email" type="email" placeholder="邮箱地址" required autocomplete="email">
+      <input id="pwd-password" type="password" placeholder="密码" required autocomplete="current-password">
+      <button type="submit" class="btn-primary">登录</button>
+      <button id="btn-forgot" type="button" class="btn-link">忘记密码？用验证码登录可重置</button>
+    </form>
+
+    <p id="login-error" class="error-text hidden"></p>
+  </div>
+</div>
+
+<!-- 主应用 -->
+<div id="view-app" class="view hidden">
+  <header class="app-header">
+    <span class="app-title">⏱ 时间追踪</span>
+    <span id="header-user" class="header-user"></span>
+  </header>
+
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="timer" type="button">计时</button>
+    <button class="tab-btn" data-tab="history" type="button">记录</button>
+    <button class="tab-btn" data-tab="stats" type="button">统计</button>
+    <button class="tab-btn" data-tab="settings" type="button">设置</button>
+  </nav>
+
+  <!-- 计时页 -->
+  <section id="page-timer" class="page">
+    <div class="timer-face">
+      <div id="elapsed" class="elapsed">00:00:00</div>
+      <div id="running-since" class="running-since hidden"></div>
+    </div>
+    <input id="entry-title" type="text" placeholder="在做什么？（可留空，停止时再补）" maxlength="100">
+    <div id="category-row" class="category-row"></div>
+    <button id="btn-toggle" class="btn-big btn-start" type="button">开始</button>
+    <p id="timer-hint" class="hint">开始后即使关闭页面，计时也不会中断</p>
+  </section>
+
+  <!-- 历史页 -->
+  <section id="page-history" class="page hidden">
+    <div class="history-filter">
+      <button class="filter-btn active" data-filter="all" type="button">全部</button>
+      <button class="filter-btn" data-filter="pending" type="button">待补充 <span id="pending-count" class="pending-count hidden"></span></button>
+    </div>
+    <div id="history-list" class="history-list"></div>
+    <p id="history-empty" class="hint hidden">还没有记录，去开始第一段计时吧</p>
+  </section>
+
+  <!-- 统计页 -->
+  <section id="page-stats" class="page hidden">
+    <div class="range-switch">
+      <button class="range-btn active" data-range="day" type="button">日</button>
+      <button class="range-btn" data-range="week" type="button">周</button>
+      <button class="range-btn" data-range="month" type="button">月</button>
+    </div>
+    <div id="stats-summary" class="stats-summary"></div>
+    <div class="chart-card">
+      <div class="chart-title">时间分布</div>
+      <div id="chart-pie" class="chart"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">每日时长</div>
+      <div id="chart-bar" class="chart"></div>
+    </div>
+  </section>
+
+  <!-- 设置页 -->
+  <section id="page-settings" class="page hidden">
+    <div class="settings-card">
+      <div class="settings-title">分类管理</div>
+      <div id="cat-manage-list"></div>
+      <div class="cat-add-row">
+        <input id="new-cat-name" type="text" placeholder="新分类名称" maxlength="20">
+        <input id="new-cat-color" type="color" value="#4F8CFF" title="选择颜色">
+        <button id="btn-add-cat" class="btn-secondary" type="button">添加</button>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <div class="settings-title">NotebookLM 同步（Google Docs 管道）</div>
+      <div id="gsync-status" class="settings-user">未配置</div>
+      <label class="field-label">Google Doc ID（文档链接 /d/ 后面那串）</label>
+      <input id="gdoc-id" type="text" placeholder="例如 1AbCdEfGhIjKlMnOpQrStUvWxYz">
+      <label class="field-label">服务账号 JSON 密钥（仅存本机，不上传）</label>
+      <textarea id="gsa-json" rows="4" placeholder='粘贴下载的服务账号密钥 JSON 全文'></textarea>
+      <div class="export-row" style="margin-top:10px">
+        <button id="btn-gsync-save" class="btn-secondary" type="button">保存配置</button>
+        <button id="btn-gsync-check" class="btn-secondary" type="button">测试连接</button>
+        <button id="btn-gsync-now" class="btn-secondary" type="button">立即同步</button>
+      </div>
+      <div id="gsync-steps" class="gsync-steps hidden"></div>
+      <p class="hint" style="text-align:left;margin-top:8px">
+        首次使用请先看 <a href="setup-google.html" target="_blank" style="color:var(--primary)">一次性配置引导</a>（约 10 分钟，只配一次）
+      </p>
+    </div>
+
+    <div class="settings-card">
+      <div class="settings-title">数据导出</div>
+      <div class="export-row">
+        <select id="export-range">
+          <option value="all">全部记录</option>
+          <option value="30">最近 30 天</option>
+          <option value="7">最近 7 天</option>
+        </select>
+        <button id="btn-export-csv" class="btn-secondary" type="button">导出 CSV</button>
+        <button id="btn-export-xlsx" class="btn-secondary" type="button">导出 Excel</button>
+      </div>
+      <p class="hint" style="text-align:left;margin-top:8px">含标题、分类、起止时间、时长、备注</p>
+    </div>
+
+    <div class="settings-card">
+      <div class="settings-title">账号</div>
+      <div id="settings-user" class="settings-user"></div>
+      <button id="btn-signout" class="btn-danger-outline" type="button">退出登录</button>
+    </div>
+  </section>
+</div>
+
+<!-- 编辑记录弹窗 -->
+<div id="edit-modal" class="modal-mask hidden">
+  <div class="modal-card">
+    <div class="modal-title">编辑记录</div>
+    <label class="field-label">做了什么</label>
+    <input id="edit-title" type="text" maxlength="100">
+    <label class="field-label">分类</label>
+    <div id="edit-category-row" class="category-row" style="justify-content:flex-start;margin:6px 0 12px"></div>
+    <label class="field-label">开始时间</label>
+    <input id="edit-start" type="datetime-local" step="60">
+    <label class="field-label">结束时间</label>
+    <input id="edit-end" type="datetime-local" step="60">
+    <p id="edit-error" class="error-text hidden"></p>
+    <div class="modal-actions">
+      <button id="btn-edit-cancel" class="btn-secondary" type="button">取消</button>
+      <button id="btn-edit-save" class="btn-primary" type="button">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 快速标签弹窗（停止计时后） -->
+<div id="tag-modal" class="modal-mask hidden">
+  <div class="modal-card">
+    <div class="modal-title">这段时间算哪类？</div>
+    <div id="tag-entry-info" class="tag-entry-info"></div>
+    <div id="tag-category-row" class="category-row" style="justify-content:flex-start;margin:6px 0 12px"></div>
+    <div class="modal-actions">
+      <button id="btn-tag-skip" class="btn-secondary" type="button">跳过，稍后补充</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="gsync.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

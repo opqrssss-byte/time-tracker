@@ -1,0 +1,10 @@
+{
+  "miniprogramRoot": "./",
+  "compileType": "miniprogram",
+  "description": "时间追踪小程序",
+  "setting": {
+    "es6": true,
+    "postcss": true,
+    "minified": true
+  }
+}

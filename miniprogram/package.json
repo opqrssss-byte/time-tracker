@@ -1,0 +1,8 @@
+{
+  "name": "time-tracker-miniprogram",
+  "version": "1.0.0",
+  "description": "时间追踪小程序",
+  "dependencies": {
+    "@tencent-ai/workbuddy-cloud-sdk": "^0.1.2-dev.1b37f73.202609222026"
+  }
+}

@@ -1,0 +1,17 @@
+<view class="page">
+  <view wx:if="{{groups.length === 0}}" class="hint">还没有记录，去开始第一段计时吧</view>
+
+  <block wx:for="{{groups}}" wx:key="label" wx:for-item="group">
+    <view class="day-label">{{group.label}}</view>
+    <view wx:for="{{group.items}}" wx:key="id" wx:for-item="en" class="entry-item">
+      <view class="entry-main">
+        <view class="entry-title-row">
+          <view wx:if="{{en.categoryColor}}" class="dot" style="background:{{en.categoryColor}}"></view>
+          <text class="entry-title">{{en.title || '（未填写）'}}</text>
+        </view>
+        <view class="entry-meta">{{en.rangeText}} · {{en.durationText}}</view>
+      </view>
+      <view class="btn-del" data-id="{{en.id}}" bindtap="deleteEntry">✕</view>
+    </view>
+  </block>
+</view>

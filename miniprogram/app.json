@@ -1,0 +1,27 @@
+{
+  "pages": [
+    "pages/timer/timer",
+    "pages/history/history",
+    "pages/settings/settings",
+    "pages/login/login"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#4F8CFF",
+    "navigationBarTitleText": "时间追踪",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f5f7fb"
+  },
+  "tabBar": {
+    "color": "#8a91a3",
+    "selectedColor": "#4F8CFF",
+    "backgroundColor": "#ffffff",
+    "list": [
+      { "pagePath": "pages/timer/timer", "text": "计时" },
+      { "pagePath": "pages/history/history", "text": "记录" },
+      { "pagePath": "pages/settings/settings", "text": "设置" }
+    ]
+  },
+  "lazyCodeLoading": "requiredComponents",
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
