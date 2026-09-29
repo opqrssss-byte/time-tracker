@@ -48,6 +48,12 @@ function fmtHMS(totalSec) {
   return `${h}:${m}:${sec}`
 }
 
+/* 纯分:秒（小时折进分钟，如 125:15）——悬浮组件专用 */
+function fmtMS(totalSec) {
+  const s = Math.max(0, Math.floor(totalSec))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
 function fmtClock(iso) {
   const d = new Date(iso)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -322,11 +328,27 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
   })
 })
 
-/* ========== 桌面胶囊（widget）模式 ========== */
+/* ========== 桌面悬浮组件（widget）模式：环形色块 ========== */
+const WIDGET_W = 260
+const WIDGET_H = 130
+const RING_CX = 59
+const RING_R = 47
+const RING_SW = 17
+const RING_CIRC = 2 * Math.PI * RING_R
+const SEG_GAP = 1.6          // 相邻扇区间隙（px）
+const TEXT_MIN_DEG = 25      // 扇区内显示文字所需的最小角度
+const MAX_SECTORS = 7        // 环上直接展示的最大扇区数，其余合并为「其他」
+const WIDGET_SWATCH_COLORS = ['#4F8CFF', '#9B6DFF', '#2FBF71', '#F2A93B', '#FF5A5A', '#23B8D5', '#F06EAA', '#8a91a3']
+let widgetSwatchColor = WIDGET_SWATCH_COLORS[0]
+let ringData = []            // 当前环上扇区数据（供 tooltip 使用）
+
 function showWidgetLogin() {
   $('view-widget').classList.remove('hidden')
   $('widget-login').classList.remove('hidden')
-  $('capsule').classList.add('hidden')
+  $('widget-main').classList.add('hidden')
+  $('widget-tip').classList.add('hidden')
+  $('widget-add-panel').classList.add('hidden')
+  $('widget-tagbar').classList.add('hidden')
 }
 
 $('btn-widget-login').addEventListener('click', () => {
@@ -338,41 +360,269 @@ async function enterWidget() {
   $('view-login').classList.add('hidden')
   $('view-widget').classList.remove('hidden')
   $('widget-login').classList.add('hidden')
-  $('capsule').classList.remove('hidden')
+  $('widget-main').classList.remove('hidden')
   await loadCategories()
   await refreshRunning()
+  refreshTodayStats()
   startTicker()
   startPolling()
   triggerSync()
 }
 
-function renderCapsule() {
-  const cap = $('capsule')
-  if (!cap) return
-  if (runningEntry) {
-    cap.classList.remove('idle'); cap.classList.add('running')
-    $('capsule-dot').style.background = '#FF5A5A'
-  } else {
-    cap.classList.remove('running'); cap.classList.add('idle')
-    $('capsule-dot').style.background = '#3d4460'
-  }
+/* 扩窗：新 exe 用 resizeTo，旧 exe 兜底只扩高度 */
+function widgetResize(width, height) {
+  if (!isElectron) return
+  if (window.electronAPI.resizeTo) window.electronAPI.resizeTo(width, height)
+  else window.electronAPI.resize(height)
 }
 
-/* 单击胶囊 = 开始/停止；拖拽由 Electron 的 app-region 处理，点击事件不受影响 */
-$('capsule').addEventListener('click', async () => {
-  if (!$('widget-tagbar').classList.contains('hidden')) return // 打标签时不响应
+function elapsedSec() {
+  if (!runningEntry) return 0
+  return Math.max(0, (Date.now() - new Date(runningEntry.start_time).getTime()) / 1000)
+}
+
+/* 今日累计统计（end_time 非空的记录按分类聚合 + 每分类最近一条标题） */
+let todayStats = { day: '', byCat: {}, latest: {} }
+async function refreshTodayStats() {
+  const start = new Date(); start.setHours(0, 0, 0, 0)
+  const { data, error } = await cloud.database.from('time_entries')
+    .select('category_id,start_time,duration_sec,title')
+    .gte('start_time', start.toISOString())
+    .not('end_time', 'is', null)
+    .order('start_time', { ascending: false }).limit(500)
+  if (error) return
+  const byCat = {}, latest = {}
+  ;(data || []).forEach((e) => {
+    const k = e.category_id || 'none'
+    byCat[k] = (byCat[k] || 0) + (e.duration_sec || 0)
+    if (!latest[k]) latest[k] = (e.title || '').trim()
+  })
+  todayStats = { day: dayKey(new Date()), byCat, latest }
+  if (IS_WIDGET) renderRing()
+}
+
+/* ---------- 环形渲染 ---------- */
+function setAttrs(el, attrs) {
+  for (const k in attrs) el.setAttribute(k, attrs[k])
+}
+
+function widgetSectors() {
+  const elapsed = elapsedSec()
+  const list = categories.map((c) => ({
+    id: c.id, name: c.name, color: c.color,
+    sec: (todayStats.byCat[c.id] || 0) + (runningEntry && runningEntry.category_id === c.id ? elapsed : 0),
+    active: !!(runningEntry && runningEntry.category_id === c.id),
+  }))
+  const noneSec = (todayStats.byCat.none || 0) + (runningEntry && !runningEntry.category_id ? elapsed : 0)
+  if (noneSec > 0 || (runningEntry && !runningEntry.category_id)) {
+    list.push({ id: '__none__', name: '未分类', color: '#6b7280', sec: noneSec, active: !!(runningEntry && !runningEntry.category_id) })
+  }
+  list.sort((a, b) => b.sec - a.sec)
+  return list
+}
+
+function renderRing() {
+  const svg = $('widget-ring')
+  if (!svg) return
+  const NS = 'http://www.w3.org/2000/svg'
+  svg.innerHTML = ''
+  const g = document.createElementNS(NS, 'g')
+  g.setAttribute('transform', `rotate(-90 ${RING_CX} ${RING_CX})`) // 从 12 点方向开始
+  svg.appendChild(g)
+
+  const list = widgetSectors()
+  const total = list.reduce((s, x) => s + x.sec, 0)
+  if (total <= 0) {
+    ringData = []
+    const c = document.createElementNS(NS, 'circle')
+    setAttrs(c, { cx: RING_CX, cy: RING_CX, r: RING_R, fill: 'none', stroke: 'rgba(255,255,255,0.10)', 'stroke-width': RING_SW })
+    g.appendChild(c)
+    return
+  }
+
+  const top = list.slice(0, MAX_SECTORS)
+  const rest = list.slice(MAX_SECTORS)
+  const items = [...top]
+  if (rest.length) items.push({ id: '__other__', name: '其他', color: '#555b6e', sec: rest.reduce((s, x) => s + x.sec, 0), rest })
+
+  ringData = items
+  let acc = 0
+  items.forEach((it) => {
+    const frac = it.sec / total
+    const arcLen = frac * RING_CIRC
+    const gap = items.length > 1 ? Math.min(SEG_GAP, arcLen * 0.3) : 0
+    const drawLen = Math.max(0.8, arcLen - gap)
+    const c = document.createElementNS(NS, 'circle')
+    setAttrs(c, {
+      cx: RING_CX, cy: RING_CX, r: RING_R, fill: 'none',
+      stroke: it.color, 'stroke-width': RING_SW,
+      'stroke-dasharray': `${drawLen} ${RING_CIRC - drawLen}`,
+      'stroke-dashoffset': String(-acc - gap / 2),
+      'data-cat': it.id, 'data-name': it.name,
+      class: 'ring-seg' + (it.active ? ' active' : ''),
+    })
+    g.appendChild(c)
+
+    // 扇区文字：角度足够时画在弧中点（截断到 4 字）
+    const deg = frac * 360
+    if (deg >= TEXT_MIN_DEG && it.id !== '__other__') {
+      const theta = -Math.PI / 2 + (acc + arcLen / 2) / RING_CIRC * 2 * Math.PI
+      const tx = RING_CX + RING_R * Math.cos(theta)
+      const ty = RING_CX + RING_R * Math.sin(theta)
+      const label = it.name.length > 4 ? it.name.slice(0, 4) : it.name
+      const t = document.createElementNS(NS, 'text')
+      setAttrs(t, {
+        x: tx, y: ty, 'text-anchor': 'middle', 'dominant-baseline': 'central',
+        class: 'ring-label',
+      })
+      t.textContent = label
+      svg.appendChild(t)
+    }
+    acc += arcLen
+  })
+}
+
+/* ---------- 悬停详情浮层 ---------- */
+function showWidgetTip(catId, fallbackName) {
+  const tip = $('widget-tip')
+  if (!tip) return
+  if (catId === '__other__') {
+    const other = ringData.find((x) => x.id === '__other__')
+    if (!other || !other.rest || !other.rest.length) return
+    tip.classList.add('clickable')
+    tip.innerHTML = other.rest.map((r) =>
+      `<button type="button" class="tip-row" data-cat="${escapeHtml(r.id)}">
+        <span class="dot" style="background:${r.color}"></span>${escapeHtml(r.name)} · ${fmtDurMin(r.sec)}
+      </button>`).join('')
+  } else {
+    tip.classList.remove('clickable')
+    const it = ringData.find((x) => x.id === catId) || { name: fallbackName, sec: 0 }
+    const latest = todayStats.latest[catId === '__none__' ? 'none' : catId]
+    tip.innerHTML = `<b>${escapeHtml(it.name || fallbackName || '')}</b> · 今日 ${fmtDurMin(it.sec || 0)}`
+      + (latest ? `<div class="tip-sub">最近：${escapeHtml(latest)}</div>` : `<div class="tip-sub">今日暂无记录</div>`)
+  }
+  tip.classList.remove('hidden')
+}
+
+function hideWidgetTip() {
+  const tip = $('widget-tip')
+  if (tip) tip.classList.add('hidden')
+}
+
+/* ---------- 点击扇区：开始 / 停止 / 切换 ---------- */
+async function onSectorClick(catId) {
+  if (!navigator.onLine) { showToast('当前离线，无法操作'); return }
+  if (!$('widget-tagbar').classList.contains('hidden')) return  // 打标签时不响应
+  if (!$('widget-add-panel').classList.contains('hidden')) return
+  const cid = catId === '__none__' ? null : catId
+  if (runningEntry && runningEntry.category_id === cid) {
+    await stopTimer()
+    return
+  }
+  if (runningEntry) {
+    const ok = await stopTimer({ skipQuickTag: true })  // 切换：不弹标签栏
+    if (!ok) return
+  }
+  await startTimer({ categoryId: cid })
+}
+
+/* ---------- 新增分类（桌面常驻内嵌） ---------- */
+function renderSwatches() {
+  const box = $('widget-color-swatches')
+  box.innerHTML = ''
+  WIDGET_SWATCH_COLORS.forEach((col) => {
+    const b = document.createElement('button')
+    b.type = 'button'
+    b.className = 'swatch' + (col === widgetSwatchColor ? ' selected' : '')
+    b.style.background = col
+    b.addEventListener('click', () => { widgetSwatchColor = col; renderSwatches() })
+    box.appendChild(b)
+  })
+}
+
+function openWidgetAddPanel() {
+  $('widget-add-panel').classList.remove('hidden')
+  $('widget-new-cat-name').value = ''
+  renderSwatches()
+  widgetResize(WIDGET_W, 250)
+  $('widget-new-cat-name').focus()
+}
+
+function closeWidgetAddPanel() {
+  if ($('widget-add-panel').classList.contains('hidden')) return
+  $('widget-add-panel').classList.add('hidden')
+  if ($('widget-tagbar').classList.contains('hidden')) widgetResize(WIDGET_W, WIDGET_H)
+  else widgetResize(WIDGET_W, 250)
+}
+
+async function saveWidgetCategory() {
+  const name = $('widget-new-cat-name').value.trim()
+  if (!name) { showToast('请输入分类名称'); return }
+  const maxSort = categories.reduce((m, c) => Math.max(m, c.sort_order || 0), 0)
+  const { error } = await cloud.database.from('categories')
+    .insert({ name, color: widgetSwatchColor, sort_order: maxSort + 1 }).select()
+  if (error) {
+    showToast(error.code === '23505' ? '同名分类已存在' : '添加失败，请重试')
+    return
+  }
+  showToast('分类已添加')
+  closeWidgetAddPanel()
+  await loadCategories()
+  renderRing()
+}
+
+/* ---------- 事件接线（委托， survives 每秒重绘） ---------- */
+$('widget-ring').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-cat]')
+  if (!t) return
+  hideWidgetTip()
+  onSectorClick(t.getAttribute('data-cat'))
+})
+$('widget-ring').addEventListener('mouseover', (e) => {
+  const t = e.target.closest('[data-cat]')
+  if (t) showWidgetTip(t.getAttribute('data-cat'), t.getAttribute('data-name'))
+})
+$('widget-ring').addEventListener('mouseout', (e) => {
+  if (e.target.closest('[data-cat]') && !$('widget-ring').contains(e.relatedTarget)) hideWidgetTip()
+})
+$('widget-tip').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-cat]')
+  if (!b) return
+  hideWidgetTip()
+  onSectorClick(b.getAttribute('data-cat'))
+})
+$('widget-tip').addEventListener('mouseleave', hideWidgetTip)
+
+/* 右侧时长条：计时中点击 = 停止；空闲点击 = 开始未分类计时 */
+$('widget-side').addEventListener('click', async () => {
   if (!navigator.onLine) { showToast('当前离线，无法操作'); return }
   if (runningEntry) await stopTimer()
   else await startTimer()
 })
 
-$('capsule').addEventListener('contextmenu', (e) => {
+/* 右键 = Electron 菜单（打开完整版/开机自启/退出） */
+$('widget-main').addEventListener('contextmenu', (e) => {
   e.preventDefault()
   if (isElectron) window.electronAPI.menu()
 })
 
-function widgetResize(height) {
-  if (isElectron) window.electronAPI.resize(height)
+$('widget-add-cat').addEventListener('click', openWidgetAddPanel)
+$('btn-widget-cat-save').addEventListener('click', saveWidgetCategory)
+$('btn-widget-cat-cancel').addEventListener('click', closeWidgetAddPanel)
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && IS_WIDGET) closeWidgetAddPanel()
+})
+
+function renderWidgetState() {
+  const time = $('widget-time')
+  const state = $('widget-state')
+  const addBtn = $('widget-add-cat')
+  if (!time) return
+  const running = !!runningEntry
+  time.classList.toggle('idle', !running)
+  const cat = running ? catById(runningEntry.category_id) : null
+  state.textContent = running ? (cat ? cat.name : '计时中') : '空闲'
+  addBtn.classList.toggle('hidden', running)
 }
 
 /* ========== 分类 ========== */
@@ -451,16 +701,24 @@ function renderTimer() {
     btn.className = 'btn-big btn-start'
     since.classList.add('hidden')
     $('elapsed').textContent = '00:00:00'
-    if (IS_WIDGET) $('capsule-time').textContent = '00:00:00'
+    if (IS_WIDGET) {
+      const t = $('widget-time')
+      if (t) t.textContent = '00:00'
+    }
   }
-  renderCapsule()
+  renderWidgetState()
+  if (IS_WIDGET) renderRing()
 }
 
 function updateElapsed() {
   if (!runningEntry) return
-  const text = fmtHMS((Date.now() - new Date(runningEntry.start_time).getTime()) / 1000)
-  $('elapsed').textContent = text
-  if (IS_WIDGET) $('capsule-time').textContent = text
+  const sec = elapsedSec()
+  $('elapsed').textContent = fmtHMS(sec)
+  if (IS_WIDGET) {
+    $('widget-time').textContent = fmtMS(sec)
+    if (dayKey(new Date()) !== todayStats.day) refreshTodayStats()  // 跨天：环形归零
+    renderRing()
+  }
 }
 
 function startTicker() {
@@ -471,7 +729,10 @@ function stopTicker() { if (ticker) clearInterval(ticker); ticker = null }
 
 function startPolling() {
   stopPolling()
-  pollTimer = setInterval(refreshRunning, 30000)
+  pollTimer = setInterval(() => {
+    refreshRunning()
+    refreshTodayStats()
+  }, 30000)
 }
 function stopPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = null }
 
@@ -496,16 +757,20 @@ $('btn-toggle').addEventListener('click', async () => {
   else await startTimer()
 })
 
-async function startTimer() {
+async function startTimer(opts = {}) {
   await refreshRunning()
   if (runningEntry) {
     showToast('已有一段计时在进行中')
     return
   }
+  // 分类来源：显式参数 > widget 模式留空 > 完整版用已选分类
+  const categoryId = opts.categoryId !== undefined
+    ? opts.categoryId
+    : (IS_WIDGET ? null : selectedCategoryId)
   const { data, error } = await cloud.database.from('time_entries')
     .insert({
       title: IS_WIDGET ? '' : $('entry-title').value.trim(),
-      category_id: IS_WIDGET ? null : selectedCategoryId,
+      category_id: categoryId,
       start_time: new Date().toISOString(),
     })
     .select()
@@ -523,9 +788,9 @@ async function startTimer() {
   showToast('计时开始')
 }
 
-async function stopTimer() {
+async function stopTimer({ skipQuickTag = false } = {}) {
   const entry = runningEntry
-  if (!entry) return
+  if (!entry) return false
   const end = new Date()
   const dur = Math.max(1, Math.round((end.getTime() - new Date(entry.start_time).getTime()) / 1000))
   const patch = {
@@ -542,7 +807,7 @@ async function stopTimer() {
   if (error || !data || data.length === 0) {
     showToast('停止失败，请重试')
     await refreshRunning()
-    return
+    return false
   }
   const saved = data[0]
   runningEntry = null
@@ -555,17 +820,19 @@ async function stopTimer() {
   showToast(`已记录 ${fmtDurMin(dur)}`)
   if (!IS_WIDGET) loadHistory()
   triggerSync()
-  openQuickTag(saved) // 快速标签流程
+  refreshTodayStats()
+  if (!skipQuickTag) openQuickTag(saved) // 快速标签流程（切换计时时跳过）
+  return true
 }
 
 /* ========== 快速标签（停止后一键分类，内容稍后补） ========== */
 function openQuickTag(entry) {
   quickTagEntry = entry
   if (IS_WIDGET) {
-    // 胶囊下方展开标签栏，并通知 Electron 扩窗
+    // 组件下方展开标签栏，并通知 Electron 扩窗
     const bar = $('widget-tagbar')
     bar.classList.remove('hidden')
-    widgetResize(230)
+    widgetResize(WIDGET_W, 250)
     const wrap = $('widget-tags')
     wrap.innerHTML = ''
     categories.forEach((c) => {
@@ -610,6 +877,7 @@ async function applyQuickTag(categoryId) {
   showToast(`已标记为「${cat ? cat.name : ''}」`)
   if (!IS_WIDGET) loadHistory()
   triggerSync()
+  refreshTodayStats()
 }
 
 function closeQuickTag() {
@@ -617,7 +885,7 @@ function closeQuickTag() {
   $('tag-modal').classList.add('hidden')
   if (IS_WIDGET) {
     $('widget-tagbar').classList.add('hidden')
-    widgetResize(72)
+    widgetResize(WIDGET_W, WIDGET_H)
   }
 }
 

@@ -4,8 +4,8 @@ const path = require('path')
 
 const WIDGET_URL = 'https://time-tracker-91208.app.workbuddy.host/?widget=1'
 const FULL_URL = 'https://time-tracker-91208.app.workbuddy.host/'
-const CAPSULE_W = 240
-const CAPSULE_H = 72
+const CAPSULE_W = 260
+const CAPSULE_H = 130
 const STATE_FILE = path.join(app.getPath('userData'), 'widget-state.json')
 
 let widgetWin = null
@@ -32,10 +32,13 @@ if (!gotLock) {
   app.whenReady().then(() => {
     createWidget()
 
-    ipcMain.on('widget:resize', (_e, height) => {
+    ipcMain.on('widget:resize', (_e, payload) => {
       if (!widgetWin) return
-      const h = Math.max(CAPSULE_H, Math.min(400, Number(height) || CAPSULE_H))
-      widgetWin.setSize(CAPSULE_W, h, true)
+      // 兼容两种协议：数字 = 旧协议（只改高度）；对象 = 新协议 {width, height}
+      const isObj = payload && typeof payload === 'object'
+      const w = Math.max(200, Math.min(400, Number(isObj ? payload.width : CAPSULE_W) || CAPSULE_W))
+      const h = Math.max(72, Math.min(500, Number(isObj ? payload.height : payload) || CAPSULE_H))
+      widgetWin.setSize(w, h, true)
     })
 
     ipcMain.on('widget:open-full', () => openFull())

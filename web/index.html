@@ -14,14 +14,29 @@
 
 <div id="offline-banner" class="offline-banner hidden">当前离线，恢复网络后可继续操作</div>
 
-<!-- ========== 桌面胶囊模式（?widget=1，供 Electron 悬浮窗使用） ========== -->
+<!-- ========== 桌面悬浮组件模式（?widget=1，供 Electron 悬浮窗使用） ========== -->
 <div id="view-widget" class="view hidden">
-  <div id="capsule" class="capsule idle">
-    <span id="capsule-dot" class="capsule-dot"></span>
-    <span id="capsule-time" class="capsule-time">00:00:00</span>
+  <div id="widget-main">
+    <div id="widget-ring-wrap">
+      <svg id="widget-ring" viewBox="0 0 118 118" width="118" height="118"></svg>
+      <button id="widget-add-cat" class="hidden" type="button" title="新增分类">+</button>
+    </div>
+    <div id="widget-side">
+      <div id="widget-time" class="idle">00:00</div>
+      <div id="widget-state">空闲</div>
+    </div>
+  </div>
+  <div id="widget-tip" class="hidden"></div>
+  <div id="widget-add-panel" class="hidden">
+    <input id="widget-new-cat-name" type="text" maxlength="20" placeholder="分类名称">
+    <div id="widget-color-swatches"></div>
+    <div class="widget-add-actions">
+      <button id="btn-widget-cat-cancel" class="btn-link" type="button">取消</button>
+      <button id="btn-widget-cat-save" class="btn-secondary" type="button">添加</button>
+    </div>
   </div>
   <div id="widget-tagbar" class="widget-tagbar hidden">
-    <div class="widget-tagbar-title">这段是什么？</div>
+    <div class="widget-tagbar-title">补个标题？也可改分类</div>
     <div id="widget-tags" class="widget-tags"></div>
     <button id="widget-tag-skip" class="btn-link" type="button">跳过</button>
   </div>

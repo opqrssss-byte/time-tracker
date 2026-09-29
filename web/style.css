@@ -260,7 +260,7 @@ input:focus, select:focus { border-color: var(--primary); background: #fff; }
   font-size: 14px; z-index: 100; white-space: nowrap;
 }
 
-/* ========== 桌面胶囊（widget）模式 ========== */
+/* ========== 桌面悬浮组件（widget）模式：环形色块 ========== */
 body.widget-mode {
   background: transparent;
   overflow: hidden;
@@ -268,36 +268,122 @@ body.widget-mode {
 }
 body.widget-mode .offline-banner { display: none !important; }
 
-.capsule {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  height: 72px;
+#widget-main {
+  display: flex; align-items: center; gap: 10px;
+  width: 260px; height: 130px;
+  padding: 6px 8px 6px 6px;
   background: rgba(26, 26, 30, 0.85);
-  border-radius: 36px;
-  cursor: pointer;
-  transition: background 0.2s;
+  border-radius: 18px;
 }
-body.electron .capsule { -webkit-app-region: drag; }
-body.electron .capsule * { -webkit-app-region: no-drag; }
-.capsule:hover { background: rgba(26, 26, 30, 0.95); }
-.capsule-dot {
-  width: 12px; height: 12px; border-radius: 50%;
-  background: #3d4460; flex: none;
-  transition: background 0.2s;
+body.electron #widget-main { -webkit-app-region: drag; }
+body.electron #widget-main button,
+body.electron #widget-main input,
+body.electron #widget-main svg { -webkit-app-region: no-drag; }
+
+/* 左：环形图 */
+#widget-ring-wrap { position: relative; width: 118px; height: 118px; flex: none; }
+#widget-ring { display: block; }
+.ring-seg { cursor: pointer; transition: opacity 0.15s, stroke-width 0.15s; }
+.ring-seg:hover { opacity: 0.82; stroke-width: 21; }
+.ring-seg.active {
+  filter: brightness(1.18) drop-shadow(0 0 3px rgba(255, 255, 255, 0.4));
+  animation: ringPulse 1.6s ease-in-out infinite;
 }
-.capsule.running .capsule-dot {
-  animation: pulse 1.6s ease-in-out infinite;
-}
-@keyframes pulse {
+@keyframes ringPulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  50% { opacity: 0.72; }
 }
-.capsule-time {
-  color: #fff;
-  font-size: 30px; font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 1px;
+.ring-label {
+  font-size: 9.5px; font-weight: 600; fill: #fff;
+  paint-order: stroke; stroke: rgba(0, 0, 0, 0.35); stroke-width: 2px;
+  pointer-events: none;
+}
+#widget-add-cat {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 34px; height: 34px; border-radius: 50%;
+  border: none; cursor: pointer;
+  background: rgba(255, 255, 255, 0.10); color: #aab0c4;
+  font-size: 20px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, transform 0.15s;
+}
+#widget-add-cat:hover {
+  background: rgba(255, 255, 255, 0.2); color: #fff;
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+/* 右：时长条 */
+#widget-side {
+  flex: 1; min-width: 0; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  align-self: stretch; margin: 8px 0;
+  padding: 8px 6px; border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  transition: background 0.15s;
+}
+#widget-side:hover { background: rgba(255, 255, 255, 0.09); }
+#widget-time {
+  color: #fff; font-size: 27px; font-weight: 700;
+  font-variant-numeric: tabular-nums; letter-spacing: 1px;
   font-family: Consolas, "SF Mono", monospace;
+  white-space: nowrap;
 }
+#widget-time.idle { color: #6b7280; }
+#widget-state {
+  color: #aab0c4; font-size: 11px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* 悬停详情浮层 */
+#widget-tip {
+  position: fixed; left: 8px; top: 132px;
+  background: rgba(26, 26, 30, 0.95); border-radius: 10px;
+  padding: 8px 10px; font-size: 12px; color: #e8eaf2;
+  max-width: 240px; z-index: 60;
+  pointer-events: none;
+  animation: tipIn 0.15s ease-out;
+}
+#widget-tip.clickable { pointer-events: auto; }
+#widget-tip .tip-sub { color: #8a91a3; font-size: 11px; margin-top: 3px; }
+#widget-tip .tip-row {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; border: none; background: transparent; color: #e8eaf2;
+  font-size: 12px; padding: 5px 6px; border-radius: 6px; cursor: pointer; text-align: left;
+}
+#widget-tip .tip-row:hover { background: rgba(255, 255, 255, 0.1); }
+@keyframes tipIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 新增分类面板 */
+#widget-add-panel {
+  margin-top: 8px;
+  background: rgba(26, 26, 30, 0.92);
+  border-radius: 14px;
+  padding: 12px;
+}
+#widget-add-panel input[type="text"] {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e8eaf2; border-radius: 8px;
+  padding: 7px 10px; font-size: 13px; outline: none;
+}
+#widget-add-panel input[type="text"]:focus { border-color: rgba(255, 255, 255, 0.35); }
+#widget-color-swatches {
+  display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;
+}
+.swatch {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 2px solid transparent; cursor: pointer; padding: 0;
+}
+.swatch.selected { border-color: #fff; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3); }
+.widget-add-actions {
+  display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 10px;
+}
+.widget-add-actions .btn-secondary { min-height: 30px; padding: 0 14px; font-size: 12px; }
 
 .widget-tagbar {
   background: rgba(26, 26, 30, 0.92);
@@ -319,10 +405,10 @@ body.electron .capsule * { -webkit-app-region: no-drag; }
 .widget-tagbar .btn-link { display: block; margin: 8px auto 0; color: #7a8199; }
 
 .widget-login {
-  height: 72px;
+  height: 130px;
   display: flex; align-items: center; justify-content: center; gap: 10px;
   background: rgba(26, 26, 30, 0.85);
-  border-radius: 36px;
+  border-radius: 18px;
   color: #aab0c4; font-size: 13px;
 }
 body.electron .widget-login { -webkit-app-region: drag; }
