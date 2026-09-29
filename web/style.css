@@ -282,11 +282,11 @@ body.electron #widget-main svg { -webkit-app-region: no-drag; }
 
 /* 左：环形图 */
 #widget-ring-wrap { position: relative; width: 118px; height: 118px; flex: none; }
-#widget-ring { display: block; }
+#widget-ring { display: block; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35)); }
 .ring-seg { cursor: pointer; transition: opacity 0.15s, stroke-width 0.15s; }
-.ring-seg:hover { opacity: 0.82; stroke-width: 21; }
+.ring-seg:hover { opacity: 0.88; stroke-width: 20; }
 .ring-seg.active {
-  filter: brightness(1.18) drop-shadow(0 0 3px rgba(255, 255, 255, 0.4));
+  filter: brightness(1.15) drop-shadow(0 0 5px rgba(255, 255, 255, 0.45));
   animation: ringPulse 1.6s ease-in-out infinite;
 }
 @keyframes ringPulse {
@@ -294,52 +294,67 @@ body.electron #widget-main svg { -webkit-app-region: no-drag; }
   50% { opacity: 0.72; }
 }
 .ring-label {
-  font-size: 9.5px; font-weight: 600; fill: #fff;
-  paint-order: stroke; stroke: rgba(0, 0, 0, 0.35); stroke-width: 2px;
+  font-size: 10px; font-weight: 700; fill: #fff;
+  paint-order: stroke; stroke: rgba(0, 0, 0, 0.4); stroke-width: 2.5px;
   pointer-events: none;
+  letter-spacing: 0.5px;
 }
 #widget-add-cat {
   position: absolute; left: 50%; top: 50%;
   transform: translate(-50%, -50%);
-  width: 34px; height: 34px; border-radius: 50%;
+  width: 36px; height: 36px; border-radius: 50%;
   border: none; cursor: pointer;
-  background: rgba(255, 255, 255, 0.10); color: #aab0c4;
-  font-size: 20px; line-height: 1;
+  background: rgba(255, 255, 255, 0.12); color: #c8cede;
+  font-size: 22px; font-weight: 300; line-height: 1;
   display: flex; align-items: center; justify-content: center;
-  transition: background 0.15s, transform 0.15s;
+  transition: background 0.2s, transform 0.25s, color 0.2s;
 }
 #widget-add-cat:hover {
-  background: rgba(255, 255, 255, 0.2); color: #fff;
-  transform: translate(-50%, -50%) scale(1.08);
+  background: rgba(255, 255, 255, 0.22); color: #fff;
+  transform: translate(-50%, -50%) scale(1.12) rotate(90deg);
 }
 
 /* 右：时长条 */
 #widget-side {
   flex: 1; min-width: 0; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  align-self: stretch; margin: 8px 0;
-  padding: 8px 6px; border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  align-self: stretch; margin: 10px 0;
+  padding: 8px 6px; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   transition: background 0.15s;
 }
-#widget-side:hover { background: rgba(255, 255, 255, 0.09); }
+#widget-side:hover { background: rgba(255, 255, 255, 0.1); }
 #widget-time {
-  color: #fff; font-size: 27px; font-weight: 700;
+  color: #fff; font-size: 28px; font-weight: 700;
   font-variant-numeric: tabular-nums; letter-spacing: 1px;
   font-family: Consolas, "SF Mono", monospace;
   white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
-#widget-time.idle { color: #6b7280; }
+#widget-time.idle { color: #6b7280; text-shadow: none; }
 #widget-state {
   color: #aab0c4; font-size: 11px;
-  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: flex; align-items: center; gap: 5px;
+  max-width: 100%; white-space: nowrap;
 }
+#widget-state-text {
+  max-width: 80px; overflow: hidden; text-overflow: ellipsis;
+}
+.state-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #6b7280; flex: none;
+  transition: background 0.2s;
+}
+.state-dot.on { animation: ringPulse 1.6s ease-in-out infinite; }
 
 /* 悬停详情浮层 */
 #widget-tip {
   position: fixed; left: 8px; top: 132px;
-  background: rgba(26, 26, 30, 0.95); border-radius: 10px;
-  padding: 8px 10px; font-size: 12px; color: #e8eaf2;
+  background: rgba(26, 26, 30, 0.96); border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  padding: 9px 11px; font-size: 12px; color: #e8eaf2;
   max-width: 240px; z-index: 60;
   pointer-events: none;
   animation: tipIn 0.15s ease-out;

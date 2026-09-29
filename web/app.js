@@ -335,7 +335,7 @@ const RING_CX = 59
 const RING_R = 47
 const RING_SW = 17
 const RING_CIRC = 2 * Math.PI * RING_R
-const SEG_GAP = 1.6          // 相邻扇区间隙（px）
+const SEG_GAP_VIS = 5       // 相邻扇区视觉间隙(px)（圆头线帽会向两端各延伸 SW/2）
 const TEXT_MIN_DEG = 25      // 扇区内显示文字所需的最小角度
 const MAX_SECTORS = 7        // 环上直接展示的最大扇区数，其余合并为「其他」
 const WIDGET_SWATCH_COLORS = ['#4F8CFF', '#9B6DFF', '#2FBF71', '#F2A93B', '#FF5A5A', '#23B8D5', '#F06EAA', '#8a91a3']
@@ -450,12 +450,13 @@ function renderRing() {
   items.forEach((it) => {
     const frac = it.sec / total
     const arcLen = frac * RING_CIRC
-    const gap = items.length > 1 ? Math.min(SEG_GAP, arcLen * 0.3) : 0
-    const drawLen = Math.max(0.8, arcLen - gap)
+    // 圆头线帽从虚线两端向外延伸 SW/2，虚线间隙 = 视觉间隙 + SW 才能留出白色间隔
+    const gap = items.length > 1 ? Math.min(RING_SW + SEG_GAP_VIS, arcLen * 0.6) : 0
+    const drawLen = Math.max(1.5, arcLen - gap)
     const c = document.createElementNS(NS, 'circle')
     setAttrs(c, {
       cx: RING_CX, cy: RING_CX, r: RING_R, fill: 'none',
-      stroke: it.color, 'stroke-width': RING_SW,
+      stroke: it.color, 'stroke-width': RING_SW, 'stroke-linecap': 'round',
       'stroke-dasharray': `${drawLen} ${RING_CIRC - drawLen}`,
       'stroke-dashoffset': String(-acc - gap / 2),
       'data-cat': it.id, 'data-name': it.name,
@@ -615,13 +616,22 @@ window.addEventListener('keydown', (e) => {
 
 function renderWidgetState() {
   const time = $('widget-time')
-  const state = $('widget-state')
+  const dot = $('widget-state-dot')
+  const text = $('widget-state-text')
   const addBtn = $('widget-add-cat')
   if (!time) return
   const running = !!runningEntry
   time.classList.toggle('idle', !running)
   const cat = running ? catById(runningEntry.category_id) : null
-  state.textContent = running ? (cat ? cat.name : '计时中') : '空闲'
+  if (running) {
+    text.textContent = cat ? cat.name : '计时中'
+    dot.style.background = cat ? cat.color : '#FF5A5A'
+    dot.classList.add('on')
+  } else {
+    text.textContent = '空闲'
+    dot.style.background = '#6b7280'
+    dot.classList.remove('on')
+  }
   addBtn.classList.toggle('hidden', running)
 }
 
