@@ -389,7 +389,7 @@ function enterDemo() {
   $('widget-plate').classList.remove('hidden')
   renderRing()
   renderCenter()
-  setInterval(() => { renderRing(); renderCenter() }, 1000)
+  setInterval(() => { tickRing(); renderCenter() }, 1000)
 }
 
 /* 演示模式的计时：只在本地状态里开关，方便体验点击手感 */
@@ -540,6 +540,37 @@ function widgetSectors() {
   return { items }
 }
 
+/* 环形 DOM 只在数据形状变化时构建；每秒的"生长"用 applyArcGeometry() 原地改属性。
+   之前每秒整环重建会销毁鼠标下的扇区元素 → mouseout 丢失 → 悬停状态永久卡死。 */
+let ringArcs = []              // [{ el, id }]，与 ringData 顺序一致
+
+function applyArcGeometry(items) {
+  let acc = 0
+  items.forEach((it, i) => {
+    const arc = ringArcs[i]
+    if (!arc) return
+    const arcLen = (it.deg / 360) * RING_CIRC
+    // 圆头线帽各向外延伸 SW/2，虚线间隙 = 视觉间隙 + SW
+    const gap = items.length > 1 ? Math.min(RING_SW + SEG_GAP_VIS, arcLen * 0.55) : 0
+    const drawLen = Math.max(1.5, arcLen - gap)
+    arc.el.setAttribute('stroke-dasharray', `${drawLen} ${RING_CIRC - drawLen}`)
+    arc.el.setAttribute('stroke-dashoffset', String(-acc - gap / 2))
+    acc += arcLen
+  })
+}
+
+function applyRingStateClasses() {
+  ringArcs.forEach((arc, i) => {
+    const it = ringData[i]
+    if (!it) return
+    const active = !!it.active
+    arc.el.classList.toggle('active', active)
+    arc.el.style.filter = active ? `drop-shadow(0 0 6px ${hexToRgba(it.color, 0.6)})` : ''
+    arc.el.classList.toggle('hovered', hoverCatId === arc.id)
+    arc.el.classList.toggle('dim', !!hoverCatId && hoverCatId !== arc.id)
+  })
+}
+
 function renderRing() {
   const svg = $('widget-ring')
   if (!svg) return
@@ -549,7 +580,7 @@ function renderRing() {
   g.setAttribute('transform', `rotate(-90 ${RING_CX} ${RING_CX})`) // 从 12 点方向开始
   svg.appendChild(g)
 
-  // 轨道底环（Raycast hairline-soft 血统）
+  // 轨道底环
   const track = document.createElementNS(NS, 'circle')
   setAttrs(track, {
     cx: RING_CX, cy: RING_CX, r: RING_R, fill: 'none',
@@ -559,41 +590,43 @@ function renderRing() {
 
   const { items } = widgetSectors()
   ringData = items
-  let acc = 0
+  ringArcs = []
   items.forEach((it) => {
-    const arcLen = (it.deg / 360) * RING_CIRC
-    // 圆头线帽各向外延伸 SW/2，虚线间隙 = 视觉间隙 + SW
-    const gap = items.length > 1 ? Math.min(RING_SW + SEG_GAP_VIS, arcLen * 0.55) : 0
-    const drawLen = Math.max(1.5, arcLen - gap)
-    const cls = ['ring-seg']
-    if (it.active) cls.push('active')
-    if (it.ghost) cls.push('ghost')
-    if (hoverCatId && hoverCatId !== it.id) cls.push('dim')
     const c = document.createElementNS(NS, 'circle')
     setAttrs(c, {
       cx: RING_CX, cy: RING_CX, r: RING_R, fill: 'none',
-      stroke: it.color, 'stroke-width': RING_SW, 'stroke-linecap': 'round',      'stroke-dasharray': `${drawLen} ${RING_CIRC - drawLen}`,
-      'stroke-dashoffset': String(-acc - gap / 2),
+      stroke: it.color, 'stroke-width': RING_SW, 'stroke-linecap': 'round',
       'data-cat': it.id,
-      class: cls.join(' '),
+      class: 'ring-seg' + (it.ghost ? ' ghost' : ''),
     })
-    if (it.active) c.style.filter = `drop-shadow(0 0 6px ${hexToRgba(it.color, 0.6)})` // 同色辉光（Apple 环的"活"感）
     g.appendChild(c)
-    acc += arcLen
+    ringArcs.push({ el: c, id: it.id })
   })
+  applyArcGeometry(items)
+  applyRingStateClasses()
 }
 
-/* ---------- 悬停：中心读数切换为该分类概览（取代浮层，环内即信息区） ---------- */
+/* 每秒调用：形状没变就原地更新，形状变了（如幽灵变实心、出现"其他"）才重建 */
+function tickRing() {
+  const { items } = widgetSectors()
+  const sameShape = items.length === ringArcs.length && items.every((it, i) => ringArcs[i].id === it.id)
+  if (!sameShape) { renderRing(); return }
+  ringData = items
+  applyArcGeometry(items)
+  applyRingStateClasses()
+}
+
+/* ---------- 悬停：只写"次要通道"（扇区高亮 + 下方小字），绝不改动主读数 ---------- */
 function setHover(id) {
   if (hoverCatId === id) return
   hoverCatId = id
-  renderRing()
+  applyRingStateClasses()
   renderCenter()
 }
 function clearHover() {
   if (!hoverCatId) return
   hoverCatId = null
-  renderRing()
+  applyRingStateClasses()
   renderCenter()
 }
 
@@ -689,7 +722,7 @@ function openOthersPanel() {
   openPanel('widget-others-panel')
 }
 
-/* ---------- 事件接线（委托，survives 每秒重绘） ---------- */
+/* ---------- 事件接线 ---------- */
 $('widget-ring').addEventListener('click', (e) => {
   const t = e.target.closest('[data-cat]')
   if (!t) return
@@ -702,11 +735,12 @@ $('widget-ring').addEventListener('mouseover', (e) => {
   const t = e.target.closest('[data-cat]')
   if (t) setHover(t.getAttribute('data-cat'))
 })
-$('widget-ring').addEventListener('mouseout', (e) => {
-  if (!e.target.closest('[data-cat]')) return
-  if ($('widget-ring').contains(e.relatedTarget)) return
-  clearHover()
-})
+/* 离开环形/整个组件/窗口失焦 → 立即复原。不依赖 mouseout 的 relatedTarget 判断，
+   那样在元素被重绘替换时会漏事件（曾经导致悬停状态永久卡死） */
+$('widget-ring-wrap').addEventListener('mouseleave', clearHover)
+$('widget-plate').addEventListener('mouseleave', clearHover)
+window.addEventListener('blur', clearHover)
+document.addEventListener('visibilitychange', () => { if (document.hidden) clearHover() })
 
 /* 右键 = Electron 菜单（打开完整版 / 新增分类 / 开机自启 / 退出） */
 $('widget-plate').addEventListener('contextmenu', (e) => {
@@ -726,55 +760,55 @@ window.addEventListener('keydown', (e) => {
   clearHover()
 })
 
-/* ---------- 中心读数：空闲 / 计时中 / 悬停概览 三态 ---------- */
+/* ---------- 中心读数 ----------
+   第一行（大字）= 主读数，永远是"当前状态"：计时中=实时用时，空闲=00:00。悬停永不改动它。
+   第二行 = 当前状态（运行中的分类 / 空闲）
+   第三、四行 = 悬停的次要通道（该分类今日时长 / 最近一条记录），鼠标离开即消失 */
 function renderCenter() {
   const timeEl = $('widget-time')
   const dot = $('widget-state-dot')
   const textEl = $('widget-state-text')
+  const hoverEl = $('widget-hover')
   const sub = $('widget-sub')
   const addBtn = $('widget-add-cat')
   if (!timeEl) return
   const running = !!runningEntry
   const cat = running ? catById(runningEntry.category_id) : null
 
-  if (hoverCatId) {
-    // 悬停态：中心切换为该分类的今日概览（环内即信息区，无需浮层）
-    const it = hoverCatId === '__other__'
-      ? ringData.find((x) => x.id === '__other__') || {}
-      : ringData.find((x) => x.id === hoverCatId) || {}
-    const latest = todayStats.latest[hoverCatId === '__none__' ? 'none' : hoverCatId]
-    timeEl.textContent = it.sec ? fmtDurMin(it.sec) : '—'
-    timeEl.classList.remove('idle')
-    timeEl.classList.add('summary')
-    dot.style.background = hoverCatId === '__none__' ? '#6b7280' : (it.color || '#ffffff')
-    dot.classList.remove('on')
-    textEl.textContent = it.name || ''
-    if (hoverCatId === '__other__') {
-      sub.textContent = `${(it.rest || []).length} 个分类 · 点击查看`
-      sub.classList.remove('hidden')
-      timeEl.textContent = ''
-    } else {
-      sub.textContent = latest ? `最近：${latest}` : '今日暂无记录'
-      sub.classList.remove('hidden')
-    }
-  } else if (running) {
+  // 主读数（不受悬停影响）
+  if (running) {
     const t = fmtMS(elapsedSec())
     timeEl.textContent = t
-    timeEl.classList.remove('summary')
     timeEl.classList.toggle('compact', t.length >= 7)
     timeEl.classList.remove('idle')
     dot.style.background = cat ? cat.color : '#FF5A5A'
     dot.classList.add('on')
     textEl.textContent = cat ? cat.name : '未分类'
-    sub.classList.add('hidden')
   } else {
     timeEl.textContent = '00:00'
     timeEl.classList.add('idle')
     timeEl.classList.remove('compact')
-    timeEl.classList.remove('summary')
     dot.style.background = '#6a6b6c'
     dot.classList.remove('on')
     textEl.textContent = '空闲'
+  }
+
+  // 悬停次要通道
+  if (hoverCatId) {
+    const it = ringData.find((x) => x.id === hoverCatId) || {}
+    const latest = todayStats.latest[hoverCatId === '__none__' ? 'none' : hoverCatId]
+    if (hoverCatId === '__other__') {
+      hoverEl.textContent = `其他分类 · ${(it.rest || []).length} 个`
+      sub.textContent = '点一下看全部'
+      sub.classList.remove('hidden')
+    } else {
+      hoverEl.textContent = `${it.name || ''} · 今日 ${it.sec ? fmtDurMin(it.sec) : '0秒'}`
+      sub.textContent = latest ? `最近：${latest}` : ''
+      sub.classList.toggle('hidden', !sub.textContent)
+    }
+    hoverEl.classList.remove('hidden')
+  } else {
+    hoverEl.classList.add('hidden')
     sub.classList.add('hidden')
   }
   addBtn.classList.toggle('hidden', running || !!hoverCatId || anyPanelOpen())
@@ -866,7 +900,7 @@ function updateElapsed() {
   $('elapsed').textContent = fmtHMS(sec)
   if (IS_WIDGET) {
     if (dayKey(new Date()) !== todayStats.day) refreshTodayStats()  // 跨天：环归零
-    renderRing()
+    tickRing()      // 原地更新（不重建 DOM，避免打断悬停）
     renderCenter()
   }
 }

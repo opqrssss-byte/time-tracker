@@ -323,12 +323,13 @@ body.electron #widget-plate svg { -webkit-app-region: no-drag; }
 .ring-track { stroke: rgba(255, 255, 255, 0.07); }
 .ring-seg {
   cursor: pointer;
-  transition: opacity var(--w-t-fast) var(--w-ease), stroke-width var(--w-t-fast) var(--w-ease);
+  transition: opacity var(--w-t-fast) var(--w-ease), filter var(--w-t-fast) var(--w-ease);
 }
-.ring-seg:hover { stroke-width: 13; }
+/* 悬停只做"提亮"，不加粗——加粗会被误认成"正在计时"的那一段 */
+.ring-seg:hover, .ring-seg.hovered { filter: brightness(1.35); }
 /* 幽灵扇区（今日尚无记录的分类）：以轨道色呈现，保证「数据优先」，hover 才点亮 */
 .ring-seg.ghost { stroke: rgba(255, 255, 255, 0.14); }
-.ring-seg.ghost:hover { stroke: rgba(255, 255, 255, 0.34); }
+.ring-seg.ghost:hover, .ring-seg.ghost.hovered { stroke: rgba(255, 255, 255, 0.34); }
 .ring-seg.dim { opacity: 0.42; }
 .ring-seg.active { animation: w-breathe 2.4s ease-in-out infinite; }
 @keyframes w-breathe {
@@ -350,7 +351,6 @@ body.electron #widget-plate svg { -webkit-app-region: no-drag; }
   color: var(--w-ink);
 }
 #widget-time.compact { font-size: 19px; letter-spacing: -0.2px; }
-#widget-time.summary { font-size: 21px; letter-spacing: -0.3px; }
 #widget-time.idle { color: var(--w-ash); }
 #widget-state {
   display: flex; align-items: center; gap: 4px;
@@ -362,6 +362,12 @@ body.electron #widget-plate svg { -webkit-app-region: no-drag; }
 #widget-sub {
   font-size: 10px; letter-spacing: 0.1px; color: var(--w-mute);
   max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 悬停次要通道：只在这里显示被悬停分类的信息，不打扰上方的主读数 */
+#widget-hover {
+  font-size: 10.5px; font-weight: 500; letter-spacing: 0.1px;
+  color: rgba(255, 255, 255, 0.66);
+  max-width: 94px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .state-dot {
   width: 5px; height: 5px; border-radius: 50%;
