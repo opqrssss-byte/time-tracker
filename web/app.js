@@ -348,10 +348,27 @@ const RING_CIRC = 2 * Math.PI * RING_R
 const SEG_GAP_VIS = 4          // 扇区视觉间隙（圆头线帽各向外延伸 SW/2）
 const MAX_SECTORS = 7          // 环上直接展示的最大扇区数，其余合并为「其他」
 const GHOST_DEG = 6            // 今日无记录的分类保留的最小可点角度（幽灵扇区）
+/* —— 滚轮交互（仿三星旋转表圈：旋转=移动高亮，停顿/点击=确认）—— */
+const WHEEL_STEP = 100         // 累积 |deltaY| 达到该值才走一步（鼠标一格≈100~120，触控板小增量先攒）
+const WHEEL_LOCK_MS = 150      // 步进后锁定时长：忽略惯性连发，一次事件至多一步
+const WHEEL_IDLE_RESET_MS = 300 // 停这么久累积清零，避免两次半格拼成一格
+const FOCUS_CONFIRM_MS = 900   // 选中后停顿多久自动确认（开始 / 切换）
+const RING_CONFIRM_SW = 3      // 确认进度弧线宽
+const DETENT_DEG = 3.5         // 档位反馈扭动幅度
 const WIDGET_SWATCH_COLORS = ['#4F8CFF', '#9B6DFF', '#2FBF71', '#F2A93B', '#FF5A5A', '#23B8D5', '#F06EAA', '#8a91a3']
 let widgetSwatchColor = WIDGET_SWATCH_COLORS[0]
 let ringData = []              // 环上扇区数据（供中心读数使用）
 let hoverCatId = null          // 悬停中的扇区 id（'__other__' / '__none__' / 分类 id）
+let focusCatId = null          // 滚轮选中的扇区 id（与 hover 互斥，focus 优先）
+let confirmTimer = null        // 停顿自动确认的 setTimeout
+let confirmRAF = null          // 确认进度弧的 rAF
+let confirmProgress = 0        // 0..1，确认进度
+let confirmArcEl = null        // 细白确认弧 <circle>
+let ringRotEl = null           // 档位扭动用的内层 <g>
+let wheelAccum = 0             // 滚轮累积量
+let wheelSign = 0              // 上次滚动方向
+let wheelLockUntil = 0         // 步进锁定截止时间戳
+let wheelResetTimer = null     // 累积清零定时器
 
 function showWidgetLogin() {
   $('view-widget').classList.remove('hidden')
@@ -393,10 +410,11 @@ function enterDemo() {
 }
 
 /* 演示模式的计时：只在本地状态里开关，方便体验点击手感 */
-function demoToggle(catId) {
+function demoToggle(catId, { viaWheel = false } = {}) {
   const cid = catId === '__none__' ? null : catId
   if (runningEntry && runningEntry.category_id === cid) {
-    const dur = elapsedSec()
+    if (viaWheel) return                                   // 滚轮确认 → 不误停
+    const dur = elapsedSec()                               // 点击 → 停止（并弹快速标签，与正式流程一致）
     runningEntry = null
     if (cid) todayStats.byCat[cid] = (todayStats.byCat[cid] || 0) + dur
     else todayStats.byCat.none = (todayStats.byCat.none || 0) + dur
@@ -406,6 +424,7 @@ function demoToggle(catId) {
       openQuickTag(quickTagEntry)
     }
   } else {
+    const wasRunning = !!runningEntry                         // 切换：不弹标签栏（对应正式流程的 skipQuickTag）
     if (runningEntry) {
       const p = runningEntry
       const d = elapsedSec()
@@ -413,7 +432,7 @@ function demoToggle(catId) {
       else todayStats.byCat.none = (todayStats.byCat.none || 0) + d
     }
     runningEntry = { id: 'demo-run', title: '', category_id: cid, start_time: new Date().toISOString() }
-    showToast('计时开始（演示）')
+    showToast(wasRunning ? '已切换（演示）' : '计时开始（演示）')
   }
   clearHover()
   renderRing()
@@ -448,6 +467,7 @@ function anyPanelOpen() {
     .some((id) => !$(id).classList.contains('hidden'))
 }
 function openPanel(id) {
+  clearFocus()             // 面板语义优先，取消滚轮选中
   $(id).classList.remove('hidden')
   widgetResize(WIDGET_PANEL_W, WIDGET_PANEL_H)
   renderCenter()
@@ -543,9 +563,11 @@ function widgetSectors() {
 /* 环形 DOM 只在数据形状变化时构建；每秒的"生长"用 applyArcGeometry() 原地改属性。
    之前每秒整环重建会销毁鼠标下的扇区元素 → mouseout 丢失 → 悬停状态永久卡死。 */
 let ringArcs = []              // [{ el, id }]，与 ringData 顺序一致
+let focusSlot = null           // 当前选中扇区的几何槽 { drawLen, offset }，供确认进度弧对齐
 
 function applyArcGeometry(items) {
   let acc = 0
+  focusSlot = null
   items.forEach((it, i) => {
     const arc = ringArcs[i]
     if (!arc) return
@@ -553,10 +575,26 @@ function applyArcGeometry(items) {
     // 圆头线帽各向外延伸 SW/2，虚线间隙 = 视觉间隙 + SW
     const gap = items.length > 1 ? Math.min(RING_SW + SEG_GAP_VIS, arcLen * 0.55) : 0
     const drawLen = Math.max(1.5, arcLen - gap)
+    const offset = -acc - gap / 2
     arc.el.setAttribute('stroke-dasharray', `${drawLen} ${RING_CIRC - drawLen}`)
-    arc.el.setAttribute('stroke-dashoffset', String(-acc - gap / 2))
+    arc.el.setAttribute('stroke-dashoffset', String(offset))
+    if (focusCatId === arc.id) focusSlot = { drawLen, offset }
     acc += arcLen
   })
+  paintConfirmArc()   // 每秒数据变化后复绘，保证进度弧不跑偏
+}
+
+/* 确认进度弧：叠在选中扇区上，随停顿时间沿弧"点亮"，示意即将确认 */
+function paintConfirmArc() {
+  if (!confirmArcEl) return
+  if (!focusCatId || !focusSlot || confirmProgress <= 0) {
+    confirmArcEl.style.display = 'none'
+    return
+  }
+  const len = Math.max(1.5, focusSlot.drawLen * Math.min(1, confirmProgress))
+  confirmArcEl.style.display = ''
+  confirmArcEl.setAttribute('stroke-dasharray', `${len} ${RING_CIRC - len}`)
+  confirmArcEl.setAttribute('stroke-dashoffset', String(focusSlot.offset))
 }
 
 function applyRingStateClasses() {
@@ -564,11 +602,17 @@ function applyRingStateClasses() {
     const it = ringData[i]
     if (!it) return
     const active = !!it.active
+    const focused = focusCatId === arc.id          // 滚轮选中：向外推出 + 提亮，其余不变暗
+    const hovered = !focusCatId && hoverCatId === arc.id   // 选中期间悬停被抑制
     arc.el.classList.toggle('active', active)
-    arc.el.style.filter = active ? `drop-shadow(0 0 6px ${hexToRgba(it.color, 0.6)})` : ''
-    arc.el.classList.toggle('hovered', hoverCatId === arc.id)
-    arc.el.classList.toggle('dim', !!hoverCatId && hoverCatId !== arc.id)
+    arc.el.classList.toggle('focused', focused)
+    arc.el.classList.toggle('hovered', hovered)
+    arc.el.classList.toggle('dim', !!hoverCatId && !focusCatId && hoverCatId !== arc.id)
+    arc.el.style.filter = (active || focused)
+      ? `drop-shadow(0 0 6px ${hexToRgba(it.color, active ? 0.6 : 0.45)})`
+      : ''
   })
+  if (confirmArcEl) confirmArcEl.classList.toggle('focused', !!focusCatId)
 }
 
 function renderRing() {
@@ -580,13 +624,19 @@ function renderRing() {
   g.setAttribute('transform', `rotate(-90 ${RING_CX} ${RING_CX})`) // 从 12 点方向开始
   svg.appendChild(g)
 
+  // 内层 g 专供"档位反馈"扭动（外层 rotate 是属性，互不覆盖）
+  const rot = document.createElementNS(NS, 'g')
+  rot.setAttribute('class', 'ring-rot')
+  g.appendChild(rot)
+  ringRotEl = rot
+
   // 轨道底环
   const track = document.createElementNS(NS, 'circle')
   setAttrs(track, {
     cx: RING_CX, cy: RING_CX, r: RING_R, fill: 'none',
     'stroke-width': RING_SW, class: 'ring-track',
   })
-  g.appendChild(track)
+  rot.appendChild(track)
 
   const { items } = widgetSectors()
   ringData = items
@@ -599,11 +649,25 @@ function renderRing() {
       'data-cat': it.id,
       class: 'ring-seg' + (it.ghost ? ' ghost' : ''),
     })
-    g.appendChild(c)
+    rot.appendChild(c)
     ringArcs.push({ el: c, id: it.id })
   })
+
+  // 确认进度弧（叠在选中扇区上，仅选中时显示；pointer-events:none 由 CSS 给，避免挡住点击）
+  const conf = document.createElementNS(NS, 'circle')
+  setAttrs(conf, {
+    cx: RING_CX, cy: RING_CX, r: RING_R, fill: 'none',
+    'stroke-width': RING_CONFIRM_SW, 'stroke-linecap': 'round',
+    class: 'ring-confirm',
+  })
+  conf.style.display = 'none'
+  rot.appendChild(conf)
+  confirmArcEl = conf
+
   applyArcGeometry(items)
   applyRingStateClasses()
+  // 选中项可能已不存在（分类被删 / 形状变化）
+  if (focusCatId && !ringData.some((x) => x.id === focusCatId)) clearFocus()
 }
 
 /* 每秒调用：形状没变就原地更新，形状变了（如幽灵变实心、出现"其他"）才重建 */
@@ -618,6 +682,7 @@ function tickRing() {
 
 /* ---------- 悬停：只写"次要通道"（扇区高亮 + 下方小字），绝不改动主读数 ---------- */
 function setHover(id) {
+  if (focusCatId) return                 // 滚轮选中期间，悬停让位
   if (hoverCatId === id) return
   hoverCatId = id
   applyRingStateClasses()
@@ -630,13 +695,125 @@ function clearHover() {
   renderCenter()
 }
 
-/* ---------- 点击扇区：开始 / 停止 / 切换 ---------- */
-async function onSectorClick(catId) {
-  if (IS_DEMO) { demoToggle(catId); return }   // 演示模式：本地开关，不连云端
+/* ========== 滚轮选中（仿三星旋转表圈的"旋转选择"） ==========
+   旋转=沿环移动高亮，不改变任何计时；停住 FOCUS_CONFIRM_MS 或点击 = 确认（换标签）。
+   产品方向：最终形态没有"停止"，切换才是主路径 —— 所以确认只做"开始/切换"，绝不停表。 */
+const mod = (a, n) => ((a % n) + n) % n
+
+function setFocus(id) {
+  if (focusCatId === id) return
+  focusCatId = id
+  hoverCatId = null                      // 与悬停互斥
+  applyArcGeometry(ringData)             // 重算几何槽：确认进度弧要贴着选中扇区
+  applyRingStateClasses()
+  renderCenter()
+}
+
+function clearFocus() {
+  cancelConfirm()
+  if (!focusCatId) { applyRingStateClasses(); renderCenter(); return }
+  focusCatId = null
+  applyArcGeometry(ringData)
+  applyRingStateClasses()
+  renderCenter()
+}
+
+/* 沿环（按绘制顺序）步进一格，首尾循环 */
+function stepFocus(dir) {
+  const n = ringData.length
+  if (!n) return
+  let idx = focusCatId ? ringData.findIndex((x) => x.id === focusCatId) : -1
+  if (idx < 0) {
+    // 首次滚动：优先从"正在计时的分类"起跳一步；空闲则从 12 点（顺时针）/ 末段（逆时针）进入
+    const rid = runningEntry ? (runningEntry.category_id || '__none__') : null
+    const ri = rid ? ringData.findIndex((x) => x.id === rid) : -1
+    idx = ri >= 0 ? mod(ri + dir, n) : (dir > 0 ? 0 : n - 1)
+  } else {
+    idx = mod(idx + dir, n)
+  }
+  setFocus(ringData[idx].id)
+  kickDetent(dir)
+  restartConfirmTimer()
+}
+
+/* 停顿自动确认：空闲→开始计时；运行中且不同→切换；与运行中相同→无操作（防误停） */
+function restartConfirmTimer() {
+  cancelConfirm()
+  const t0 = performance.now()
+  const tick = (ts) => {
+    confirmProgress = Math.min(1, (ts - t0) / FOCUS_CONFIRM_MS)
+    paintConfirmArc()
+    if (confirmProgress < 1) confirmRAF = requestAnimationFrame(tick)
+  }
+  confirmRAF = requestAnimationFrame(tick)
+  confirmTimer = setTimeout(finishConfirm, FOCUS_CONFIRM_MS)
+}
+
+function cancelConfirm() {
+  if (confirmTimer) { clearTimeout(confirmTimer); confirmTimer = null }
+  if (confirmRAF) { cancelAnimationFrame(confirmRAF); confirmRAF = null }
+  confirmProgress = 0
+  paintConfirmArc()
+}
+
+function finishConfirm() {
+  const id = focusCatId
+  if (!id) return
+  if (id === '__other__') { clearFocus(); openOthersPanel(); return }
+  clearFocus()
+  applySectorAction(id, { viaWheel: true })
+}
+
+/* 档位反馈：环整体沿方向轻扭一下再弹回（模拟表圈磁点） */
+function kickDetent(dir) {
+  if (!ringRotEl) return
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  ringRotEl.classList.remove('detent-cw', 'detent-ccw')
+  void ringRotEl.getBoundingClientRect()      // 强制重排以重启动画
+  ringRotEl.classList.add(dir > 0 ? 'detent-cw' : 'detent-ccw')
+}
+
+/* 滚轮入口：防误触（阈值累积 + 步进锁 + 方向翻转清零）；面板/输入框/捏合缩放时不响应 */
+function onWheel(e) {
+  if (!IS_WIDGET) return
+  if (!e.target.closest || !e.target.closest('#widget-plate')) return
+  if (e.ctrlKey) return                                  // 触控板捏合缩放
+  if (anyPanelOpen()) return                             // 面板打开：滚轮留给面板内部列表
+  const ae = document.activeElement
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
+  if (!ringData.length) return
+
+  const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY
+  if (!dy) return
+  e.preventDefault()
+
+  const sign = Math.sign(dy)
+  if (sign !== wheelSign) { wheelAccum = 0; wheelSign = sign }
+  clearTimeout(wheelResetTimer)
+  wheelResetTimer = setTimeout(() => { wheelAccum = 0 }, WHEEL_IDLE_RESET_MS)
+
+  const now = performance.now()
+  if (now < wheelLockUntil) return                       // 锁定期内丢弃：忽略惯性连发
+  wheelAccum += dy
+  if (Math.abs(wheelAccum) < WHEEL_STEP) return          // 触控板小增量先累积成一格
+  wheelAccum = 0
+  wheelLockUntil = now + WHEEL_LOCK_MS
+  stepFocus(sign > 0 ? 1 : -1)                           // 滚轮向下 = 顺时针 = 下一段
+}
+window.addEventListener('wheel', onWheel, { passive: false })
+
+/* ---------- 扇区动作：开始 / 停止 / 切换 ----------
+   viaWheel=true（滚轮确认）：与运行中分类相同 → 无操作（防误停）
+   viaWheel=false（点击）：与运行中分类相同 → 停止（保留既有肌肉记忆；
+   产品最终形态是"无暂停的连续记录"，届时该手势会改为无操作） */
+async function applySectorAction(catId, { viaWheel = false } = {}) {
+  if (IS_DEMO) { demoToggle(catId, { viaWheel }); return }   // 演示模式：本地开关，不连云端
   if (!navigator.onLine) { showToast('当前离线，无法操作'); return }
   if (anyPanelOpen()) return                       // 面板打开时不响应
   const cid = catId === '__none__' ? null : catId
-  if (runningEntry && runningEntry.category_id === cid) {
+  const same = runningEntry && runningEntry.category_id === cid
+  if (same) {
+    if (viaWheel) return                           // 滚轮停在正在计时的分类：什么都不做
     await stopTimer()
     return
   }
@@ -646,6 +823,8 @@ async function onSectorClick(catId) {
   }
   await startTimer({ categoryId: cid })
 }
+
+function onSectorClick(catId) { return applySectorAction(catId, { viaWheel: false }) }
 
 /* ---------- 新增分类（桌面常驻内嵌） ---------- */
 function renderSwatches() {
@@ -727,6 +906,8 @@ $('widget-ring').addEventListener('click', (e) => {
   const t = e.target.closest('[data-cat]')
   if (!t) return
   const id = t.getAttribute('data-cat')
+  cancelConfirm()          // 点击 = 立即确认，先撤掉停顿确认
+  clearFocus()
   if (id === '__other__') { openOthersPanel(); return }
   clearHover()
   onSectorClick(id)
@@ -735,12 +916,14 @@ $('widget-ring').addEventListener('mouseover', (e) => {
   const t = e.target.closest('[data-cat]')
   if (t) setHover(t.getAttribute('data-cat'))
 })
-/* 离开环形/整个组件/窗口失焦 → 立即复原。不依赖 mouseout 的 relatedTarget 判断，
-   那样在元素被重绘替换时会漏事件（曾经导致悬停状态永久卡死） */
+/* 鼠标离开只复原悬停，不取消滚轮选中（选中的倒计时与鼠标位置无关，由用户确认）。
+   不依赖 mouseout 的 relatedTarget 判断，那样在元素被重绘替换时会漏事件（曾导致悬停永久卡死） */
 $('widget-ring-wrap').addEventListener('mouseleave', clearHover)
 $('widget-plate').addEventListener('mouseleave', clearHover)
-window.addEventListener('blur', clearHover)
-document.addEventListener('visibilitychange', () => { if (document.hidden) clearHover() })
+window.addEventListener('blur', () => { clearFocus(); clearHover() })
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { clearFocus(); clearHover() }
+})
 
 /* 右键 = Electron 菜单（打开完整版 / 新增分类 / 开机自启 / 退出） */
 $('widget-plate').addEventListener('contextmenu', (e) => {
@@ -755,15 +938,17 @@ $('btn-widget-others-close').addEventListener('click', () => closePanel('widget-
 
 window.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !IS_WIDGET) return
+  clearFocus()             // Esc：取消滚轮选中（安全阀）
   closePanel('widget-add-panel')
   closePanel('widget-others-panel')
   clearHover()
 })
 
 /* ---------- 中心读数 ----------
-   第一行（大字）= 主读数，永远是"当前状态"：计时中=实时用时，空闲=00:00。悬停永不改动它。
+   第一行（大字）= 主读数，永远是"当前状态"：计时中=实时用时，空闲=00:00。
    第二行 = 当前状态（运行中的分类 / 空闲）
-   第三、四行 = 悬停的次要通道（该分类今日时长 / 最近一条记录），鼠标离开即消失 */
+   第三、四行 = 次要通道（滚轮选中 或 鼠标悬停 的分类信息），加 → 前缀表示"待确认的选中"
+   主读数永不因悬停/选中而改变（DESIGN.md §3.4） */
 function renderCenter() {
   const timeEl = $('widget-time')
   const dot = $('widget-state-dot')
@@ -775,7 +960,7 @@ function renderCenter() {
   const running = !!runningEntry
   const cat = running ? catById(runningEntry.category_id) : null
 
-  // 主读数（不受悬停影响）
+  // 主读数（不受悬停/选中影响）
   if (running) {
     const t = fmtMS(elapsedSec())
     timeEl.textContent = t
@@ -793,16 +978,19 @@ function renderCenter() {
     textEl.textContent = '空闲'
   }
 
-  // 悬停次要通道
-  if (hoverCatId) {
-    const it = ringData.find((x) => x.id === hoverCatId) || {}
-    const latest = todayStats.latest[hoverCatId === '__none__' ? 'none' : hoverCatId]
-    if (hoverCatId === '__other__') {
-      hoverEl.textContent = `其他分类 · ${(it.rest || []).length} 个`
+  // 次要通道：滚轮选中优先于鼠标悬停
+  const cursorId = focusCatId || hoverCatId
+  if (cursorId) {
+    const it = ringData.find((x) => x.id === cursorId) || {}
+    const latest = todayStats.latest[cursorId === '__none__' ? 'none' : cursorId]
+    const prefix = focusCatId ? '→ ' : ''
+    if (cursorId === '__other__') {
+      hoverEl.textContent = `${prefix}其他分类 · ${(it.rest || []).length} 个`
       sub.textContent = '点一下看全部'
       sub.classList.remove('hidden')
     } else {
-      hoverEl.textContent = `${it.name || ''} · 今日 ${it.sec ? fmtDurMin(it.sec) : '0秒'}`
+      // 空间只有约 9 个汉字：省掉"今日"（今日口径由扇区含义与"最近"行承载）
+      hoverEl.textContent = `${prefix}${it.name || ''} · ${it.sec ? fmtDurMin(it.sec) : '0秒'}`
       sub.textContent = latest ? `最近：${latest}` : ''
       sub.classList.toggle('hidden', !sub.textContent)
     }
@@ -811,7 +999,7 @@ function renderCenter() {
     hoverEl.classList.add('hidden')
     sub.classList.add('hidden')
   }
-  addBtn.classList.toggle('hidden', running || !!hoverCatId || anyPanelOpen())
+  addBtn.classList.toggle('hidden', running || !!cursorId || anyPanelOpen())
 }
 
 /* ========== 分类 ========== */

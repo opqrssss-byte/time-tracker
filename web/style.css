@@ -323,14 +323,51 @@ body.electron #widget-plate svg { -webkit-app-region: no-drag; }
 .ring-track { stroke: rgba(255, 255, 255, 0.07); }
 .ring-seg {
   cursor: pointer;
-  transition: opacity var(--w-t-fast) var(--w-ease), filter var(--w-t-fast) var(--w-ease);
+  /* 选中态"向外推出"用绕环心的均匀缩放实现：几何（dasharray 弧长制）完全不受影响，
+     改 r 会让相邻扇区角向错位、且每秒刷新时跳变 */
+  transform-box: view-box;
+  transform-origin: 60px 60px;
+  transition: transform 180ms var(--w-ease),
+              opacity var(--w-t-fast) var(--w-ease),
+              filter var(--w-t-fast) var(--w-ease);
 }
+/* 滚轮选中：向外推出 + 提亮（其余扇区不变暗） */
+.ring-seg.focused { transform: scale(1.12); }
 /* 悬停只做"提亮"，不加粗——加粗会被误认成"正在计时"的那一段 */
 .ring-seg:hover, .ring-seg.hovered { filter: brightness(1.35); }
 /* 幽灵扇区（今日尚无记录的分类）：以轨道色呈现，保证「数据优先」，hover 才点亮 */
 .ring-seg.ghost { stroke: rgba(255, 255, 255, 0.14); }
 .ring-seg.ghost:hover, .ring-seg.ghost.hovered { stroke: rgba(255, 255, 255, 0.34); }
 .ring-seg.dim { opacity: 0.42; }
+
+/* 确认进度弧：叠在选中扇区上，随停顿时间沿弧点亮（示意即将确认） */
+.ring-confirm {
+  stroke: rgba(255, 255, 255, 0.92);
+  pointer-events: none;          /* 不能挡住环上的点击命中 */
+  transform-box: view-box;
+  transform-origin: 60px 60px;
+}
+.ring-confirm.focused { transform: scale(1.12); }   /* 与选中扇区一同外推，保持贴合 */
+
+/* 档位反馈：环沿方向轻扭一下再弹回（模拟表圈磁点） */
+.ring-rot { transform-box: view-box; transform-origin: 60px 60px; }
+@keyframes w-detent-cw {
+  0% { transform: rotate(0deg); }
+  35% { transform: rotate(3.5deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes w-detent-ccw {
+  0% { transform: rotate(0deg); }
+  35% { transform: rotate(-3.5deg); }
+  100% { transform: rotate(0deg); }
+}
+.ring-rot.detent-cw { animation: w-detent-cw 160ms var(--w-ease); }
+.ring-rot.detent-ccw { animation: w-detent-ccw 160ms var(--w-ease); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-seg.focused, .ring-confirm.focused { transform: none; }
+  .ring-rot.detent-cw, .ring-rot.detent-ccw { animation: none; }
+}
 .ring-seg.active { animation: w-breathe 2.4s ease-in-out infinite; }
 @keyframes w-breathe {
   0%, 100% { opacity: 1; }
