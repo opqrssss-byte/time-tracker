@@ -1,7 +1,10 @@
 # 时间追踪项目 · Agent 交接文档
 
-> 版本：v1.0.0（2026-09-29 存档）｜ 用途：交给任何 agent 即可接手本项目的需求理解、开发与运维
+> 版本：**v1.1.0**（2026-09-30 存档；v1.0.0 = 初版，v1.1.0 = 桌面组件重构）｜ 用途：交给任何 agent 即可接手本项目的需求理解、开发与运维
 > 仓库：https://github.com/opqrssss-byte/time-tracker ｜ 线上：https://time-tracker-91208.app.workbuddy.host/
+
+> **新环境/新机器请先读 [`docs/SETUP-NEW-MACHINE.md`](docs/SETUP-NEW-MACHINE.md)**（环境准备 → 本地跑起来 → 改完怎么验证 → 发布与凭据恢复），再回来看本文件。
+> 要改桌面组件，另读 [`DESIGN.md`](DESIGN.md)；要打包 exe，读 [`desktop/PACKAGING.md`](desktop/PACKAGING.md)。
 
 ---
 
@@ -74,7 +77,7 @@ time_entries(id, owner_id, title DEFAULT '', category_id→categories ON DELETE 
 | `desktop/electron-builder.preview.yml` | 预览版打包配置（把 web/ 打进包，供离线试组件） |
 | `desktop/gen-icon.js` | 纯 Node 生成 icon.ico（icon.ico 是二进制，可用它重新生成） |
 | `website` 相关 | `miniprogram/` 原生小程序：login/timer/history/settings 四页 + utils/cloud.js（SDK `/miniprogram` 子路径 + 诊断适配器） |
-| `.wbapp_*.genie` | WorkBuddy 应用注册标记（勿删，entryHtml 已设 web/index.html） |
+| `.wbapp_*.genie` | WorkBuddy 应用注册标记（勿删；`entryHtml: index.html`，`localDir` 为本机绝对路径，换机需改） |
 
 ---
 
@@ -86,15 +89,17 @@ time_entries(id, owner_id, title DEFAULT '', category_id→categories ON DELETE 
 4. 用户已完成 Google 一次性配置，同步管道**已打通**（2026-09-28 验证成功）
 5. 网络：云后端国内可达无需代理；Google API 仅在同步瞬间需要代理，断档后下次成功同步自动全量补齐
 6. **组件页面在圆外完全透明**（`html`/`body`/`#view-widget` 背景均为 `rgba(0,0,0,0)`，用 `elementFromPoint` 逐层验过）——看到"方形底色/方形阴影"一律先查窗口层与提示条，不要怀疑页面背景
-7. **Electron 透明窗口的透明区域不会穿透点击**（官方明确限制）→ 必须用 `setIgnoreMouseEvents` 动态开关，见 `DESIGN.md` §5.1
+7. **Electron 透明窗口的透明区域不会穿透点击**（官方明确限制）→ 必须用 `setIgnoreMouseEvents` 动态开关，见 `DESIGN.md` §4.1
 8. **透明窗口 programmatic setSize 会留残影**（Windows）→ 组件已改为固定尺寸，见 `DESIGN.md` §4
 
 ## 6. 运维操作手册
 
 ### 6.1 发布网页（改完 web/ 必做）
-用内置工具 `workbuddy_sites_deploy`（directory=`…/buddy小屋/web`，appName=时间追踪，domainPrefix=time-tracker，`miniProgramRequested: true`）。**发布=覆盖线上**，需用户当次确认。链接固定 `https://time-tracker-91208.app.workbuddy.host/`。
+用内置工具 `workbuddy_sites_deploy`（directory=`<仓库>/web`，appName=时间追踪，domainPrefix=time-tracker，`miniProgramRequested: true`，`entryHtml: index.html`）。**发布=覆盖线上**，需用户当次确认。链接固定 `https://time-tracker-91208.app.workbuddy.host/`。
 - **只改 web/ → 不用重打 exe**（组件加载线上代码）；**改了 desktop/（壳）→ 必须重打 exe**
-- 2026-09-30 状态：线上仍是 v1.0 旧页面，多次发布均被平台拒绝（`暂时无法连接原发布环境`），待恢复后重发
+- ⚠️ **发布前确认 `.workbuddy/applications.yaml` 存在且含 `wbapp_Nv3mR6jZnOsFxEs3wbZrvd`**（已入库，用于把目录绑定到同一应用）。缺了它，工具可能把目录当新应用 → **换掉分享链接、云登录 Origin 失配**（登录只在固定域名可用）
+- ⚠️ `.wbapp_Nv3mR6jZnOsFxEs3wbZrvd.genie` 里的 `localDir` 是**本机绝对路径**；换机器后若发布/注册报目录不匹配，把它改成新机的 web 目录
+- 截至 2026-09-30 状态：线上仍是 v1.0 旧页面（多次发布被平台拒绝：`暂时无法连接原发布环境`），待恢复后重发
 
 ### 6.2 打包桌面 exe
 完整排障流程已沉淀为技能 `~/.workbuddy/skills/electron-builder-china/SKILL.md`，要点：
@@ -107,13 +112,14 @@ cd desktop && npx electron-builder --win portable --config electron-builder.prev
 **产物文件锁**：若用户正开着 exe，electron-builder 会报 `output file is locked for writing ... waiting for unlock` 并**无限等待**。判断是否被占用：`mv A B && mv B A`（能改名=已解锁）。让用户先关闭程序再打。
 - winCodeSign 已手工预置到 `%LOCALAPPDATA%/electron-builder/Cache/winCodeSign/winCodeSign-2.6.0`（符号链接权限问题，用 `7za x -snl` 解的）
 - 结尾报 safe-delete/SAFE_DELETE_BULK_CONFIRM_REQUIRED 是 WorkBuddy 沙箱拦截清理的**假失败**，exe 已生成，勿重试
-- 产物：`desktop/dist/时间追踪-桌面组件.exe`（74MB 便携版）
+- 产物：`desktop/dist/时间追踪-桌面组件.exe`（便携版，约 74MB）｜ 预览版 `desktop/dist/时间追踪-本地预览.exe`
+- ⚠️ **`desktop/dist/` 被 gitignore，产物不入库** —— 换机器后需按上面的命令自行打包（约 2 分钟）
 
 ### 6.3 Git 工作流
 - 本地 git 身份已配（repo 级 noreply 邮箱）；Git Credential Manager 已授权，**`git push` 免密**
 - GitHub 连接器（MCP）对本账号**无建库/推送权限**（403），只用于只读查询；建新库让用户在 github.com/new 手动建
 - `GIT_TERMINAL_PROMPT=0` 会禁掉 GCM 弹窗导致推送立即失败，调试时注意
-- 节奏：每轮改动 commit；大版本打 tag（当前 v1.0.0）
+- 节奏：每轮改动 commit；大版本打 tag（当前 **v1.1.0**，v1.0.0 为初版）
 
 ### 6.4 小程序发布
 **不要**用 sites_deploy。路径：对话中的小程序产物卡片 → 预览 → 右上角「分享/Share」→ 试用小程序（14 天）或绑定已有小程序。隐私清单 `miniprogram/.wbapp_*.privacy.json` 已写好（仅 Email 一项）。发布时机由用户决定（当前暂缓）。
@@ -123,7 +129,7 @@ cd desktop && npx electron-builder --win portable --config electron-builder.prev
 - **绝不**手写 fetch 调 `/.cloud/**`、绝不用 `@cloudbase/js-sdk`；云操作一律走 `@tencent-ai/workbuddy-cloud-sdk`（web 用 CDN `@dev` 版 `index.global.js`，小程序用 npm `/miniprogram` 子路径 + `createMiniProgramWorkBuddyCloud` + 诊断适配器）
 - `publishableKey` 官方设计为可公开（无权限，服务端靠 Origin/Referer 校验）；Google 服务账号私钥/Doc ID 只存本机 localStorage，**绝不入库、不进代码**
 - jsrsasign 失败时抛**字符串**而非 Error——异常兜底必须 `e.message || String(e)`，否则报错变"网络异常"（2026-09-28 真实事故）
-- 小程序 npm 构建/云请求问题排查看 `references/mini-program/diagnostics.md` 的 vConsole 日志；不要 curl 固定网关判断可用性（未签名请求返回通用页是预期）
+- 小程序 npm 构建/云请求问题排查见 `miniprogram/DIAGNOSTICS.md`（含四个坑：勿手写 fetch、勿传 owner_id、勿用 curl 网关判可用性、勿做微信登录）；不要 curl 固定网关判断可用性（未签名请求返回通用页是预期）
 - playwright-cli 的 `open` 会话**不跨 Bash 调用**，验证步骤要串在一条命令里
 - 后台任务的完成通知可能严重延迟（遇到过 6 小时），长任务日志落盘 + 主动检查产物，别干等
 

@@ -1,6 +1,9 @@
 node_modules/
 dist/
-.workbuddy/
+.workbuddy/*
+# 例外：发布应用与目录的绑定关系（含平台应用 ID，非密钥）
+# —— 换电脑克隆后若缺这个文件，发布工具可能把目录当新应用 → 换掉分享链接、云登录域失配
+!.workbuddy/applications.yaml
 .playwright-cli/
 .review/
 *.log

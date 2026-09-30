@@ -63,7 +63,7 @@
 ## 3. 解剖（Anatomy）
 
 ```
-窗口 160×160（基础）
+窗口 260×380（固定，见 §4）
 ┌───────────────┐
 │   ╭───────╮   │  圆形玻璃盘 152×152（margin 4）
 │   │ ◜◝ 环 │   │  ├ 环 120×120：r=54，环宽 11，圆头线帽
@@ -134,13 +134,13 @@
 
 **实现要点（易踩坑）**：`focusSlot`（选中扇区的几何槽）必须在 `setFocus()` 里通过 `applyArcGeometry(ringData)` 重算一次——否则确认进度弧拿不到槽位会直接隐藏（首版就踩了）。外推用 CSS `transform: scale` 而非改 `r`：弧长结算（`dasharray/dashoffset`）是圆周制，改半径会让相邻扇区角向错位且每秒跳变。
 
-### 3.5 面板（新增分类 / 全部分类 / 快速标签）
+### 3.6 面板（新增分类 / 全部分类 / 快速标签）
 - 容器：`.widget-panel` — `--w-surface-card` 底 + 1px `--w-hairline` + 圆角 16 + 内边距 12，宽 252
 - 标题：12px / 500 / 字距 0.4px / `--w-mute`，居中
 - 输入框：`--w-surface-elevated` 底 + 发丝描边，focus 时描边提到 `--w-hairline-strong`（**不发蓝光**，Raycast 规则）
 - 按钮：主操作 `.btn-solid`（白底黑字）；次要 `.btn-ghost`（透明→悬停抬升一档表面）
 - 色板：20px 圆点，选中由 2px 白描边标记
-- 展开时窗口扩至 260×320；圆环上的「+」入口临时隐藏，避免压住面板
+- 面板只做 DOM 显隐，**不改窗口尺寸**（固定 260×380，见 §4）；圆环上的「+」入口在面板/选中态时隐藏，避免压住面板
 
 ---
 
@@ -152,12 +152,12 @@
 | 面板 | 260 宽 × 内容自适应 | 新增分类 ≈155px、全部分类 ≈210px（列表限高 118）、快速标签（chips 限高 130）——都在 380 内 |
 | IPC | `resizeTo(w,h)`（旧壳回退 `resize(h)`） | 新壳暴露 `fixedSize: true`，页面据此**不再调**；主进程也有 `FIXED_WINDOW` 门闩，旧线上页面调了也无效 |
 | 窗口标志 | `transparent:true` + `setBackgroundColor('#00000000')` + `hasShadow:false` + `roundedCorners:false` | 四件套缺一都可能让系统在窗口层画出方形底色/阴影 |
-| **点击穿透** | 透明区域默认放行给桌面；指针进入圆盘圆形范围 / 登录盘 / 已展开面板时关闭穿透 | 见 §5.1 |
-| **拖动** | 手动拖动（mousedown → 主进程按光标位移 setPosition → mouseup） | 见 §5.2；旧壳回退 `-webkit-app-region` |
+| **点击穿透** | 透明区域默认放行给桌面；指针进入圆盘圆形范围 / 登录盘 / 已展开面板时关闭穿透 | 见 §4.1 |
+| **拖动** | 手动拖动（mousedown → 主进程按光标位移 setPosition → mouseup） | 见 §4.2；旧壳回退 `-webkit-app-region` |
 | 提示条 | 固定在圆盘下方（top 164）；面板打开时自动隐藏 | 面板与提示条共用同一块位置，故二者互斥 |
 | 右键 | Electron 菜单：打开完整版 / **新增分类** / 开机自启 / 退出 | 新增分类的第二个入口（可发现性兜底） |
 
-### 5.1 点击穿透（Electron 透明窗口的硬限制）
+### 4.1 点击穿透（Electron 透明窗口的硬限制）
 
 **背景**：Electron 官方明确 "You cannot click through the transparent area" —— 透明窗口的**整个矩形**都会拦截点击，用户反馈"右下侧非显示区域点不动"就是这个原因。
 
@@ -170,7 +170,7 @@
 - **失败保护**：页面加载完 3 秒内没收到过穿透信号（线上仍是旧页面、页面脚本报错等）→ 退回"可交互"。否则"新壳 + 旧页面"会让整个组件点不动
 - 副作用：穿透状态下 `:hover` 不触发 —— 但指针进入圆盘后穿透立即关闭，悬停交互正常
 
-### 5.2 任意位置拖动（取代 app-region）
+### 4.2 任意位置拖动（取代 app-region）
 
 **背景**：原先靠 `-webkit-app-region: drag`，但环必须是 `no-drag` 才能点击/滚轮 → 只剩圆盘外圈约 16px 环带能拖，用户反馈"拖动极其困难"。
 
@@ -218,7 +218,7 @@
 - 不要为"更精确的统计"取消幽灵扇区（会失去新一天的可点入口）
 - 不要把浮点秒直接交给格式化函数（会出现 `5.343000000000001秒` 这类显示）
 - **不要强化"停止"**：不加停止按钮、不做双击停止——产品最终形态是无暂停的连续记录，停止只是当前设备条件下的临时妥协
-- **不要用 `-webkit-app-region` 做拖动**（新壳）：它要求交互元素设 `no-drag`，会把可拖区域压成盘缘环带；用 §5.2 的手动拖动
+- **不要用 `-webkit-app-region` 做拖动**（新壳）：它要求交互元素设 `no-drag`，会把可拖区域压成盘缘环带；用 §4.2 的手动拖动
 - **不要把提示条/面板放在圆盘之上**：窗口底部留白就是给它们的，压在盘上会像"圆里塞了个方框"
 
 ---
@@ -247,7 +247,7 @@
 | `web/index.html` | `#view-widget`：`#widget-plate`（环形 + 中心 + 「+」）、三个 `.widget-panel`、登录盘 |
 | `web/app.js` | `widgetSectors()` 角度分配 · `renderRing()` 环形渲染 · `renderCenter()` 三态读数 · `setHover/clearHover` · `onSectorClick` · `openPanel/closePanel` · 新增分类与全部分类面板 |
 | `web/style.css` | `body.widget-mode` token 块 + 全组件样式（L263 起） |
-| `desktop/main.js` | 窗口 160×160 · resize 夹取 140–460 × 72–520 · 右键菜单「新增分类」· `WIDGET_URL` 环境变量覆盖 |
+| `desktop/main.js` | **固定窗口 260×380**（运行期不 setSize；`FIXED_WINDOW` 门闩）· 点击穿透/拖动/右键菜单 IPC · 加载地址三档优先级 · `WIDGET_URL` 环境变量覆盖 |
 | `desktop/preload.js` | `resizeTo(w,h)` · `onAddCat(cb)` |
 
 ---
@@ -264,8 +264,30 @@ python -m http.server 8899 --directory web
 
 **② 桌面悬浮窗预览**（真实置顶胶囊）
 ```bash
-WIDGET_URL="http://127.0.0.1:8899/index.html?widget=1&demo=1" \
+python -m http.server 8899          # 在仓库根目录执行
+# 组件外观与交互（用样例数据，不连云端、不依赖发布）：
+#   http://localhost:8899/web/index.html?widget=1&demo=1
+```
+
+真实悬浮窗（需按 `desktop/PACKAGING.md` 打包）：
+```bash
+WIDGET_URL="http://127.0.0.1:8899/web/index.html?widget=1&demo=1" \
   ./desktop/dist/win-unpacked/时间追踪.exe --user-data-dir="$LOCALAPPDATA/Temp/tt-widget-preview"
 ```
 
 `?demo=1` 的约定：**仅当同时带 `widget` 参数时生效**，加载样例分类与今日数据、点击扇区只走本地状态（不写云端）、新增分类只加在内存；正式环境不带该参数，代码路径完全不走。`--user-data-dir` 用于避开与正式组件的单实例锁冲突（预览可与正式版并存）。
+
+**改完组件务必跑自测**：`tools/widget-selftest.js`（用法见 `docs/SETUP-NEW-MACHINE.md` §3），覆盖滚轮选中/停顿确认/切换/循环/内联错误/元素守恒等 21~24 项断言。
+
+## 10. 界面截图（`docs/screenshots/`）
+
+| 文件 | 状态 |
+|---|---|
+| `01-idle.png` | 空闲：大字灰色 `00:00` + 「空闲」 |
+| `02-running.png` | 计时中：大字为实时用时 + 当前分类（色点） |
+| `03-hover.png` | 悬停分类：次要通道显示「分类 · 今日时长」与「最近：标题」，主读数不变 |
+| `04-wheel-focus.png` | 滚轮选中态：选中弧外推 + 确认进度弧按走向填充 |
+| `05-panel-add-category.png` | 新增分类面板（固定窗口内展开，含色板与内联错误行） |
+| `06-toast.png` | 提示条：位于圆盘下方，不与面板同屏 |
+
+均为 **260×380 真实窗口尺寸**下渲染，可用 `tools/widget-selftest.js` 的同一套操作复现这些状态。
