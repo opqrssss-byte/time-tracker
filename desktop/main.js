@@ -19,6 +19,8 @@ const STATE_FILE = path.join(app.getPath('userData'), 'widget-state.json')
 
 let widgetWin = null
 let fullWin = null
+let sawPassthroughSignal = false   // 页面是否发过"点击穿透"信号（用于失败保护）
+let passthroughGuard = null
 
 /* ---------- 窗口位置持久化 ---------- */
 function loadState() {
@@ -56,6 +58,7 @@ if (!gotLock) {
        指针进入可交互区域（圆盘/面板）时由渲染进程发 false 关闭穿透。 */
     ipcMain.on('widget:ignore-mouse', (_e, ignore) => {
       if (!widgetWin) return
+      sawPassthroughSignal = true
       widgetWin.setIgnoreMouseEvents(!!ignore, { forward: true })
     })
 
@@ -142,6 +145,15 @@ function createWidget() {
   widgetWin.setBackgroundColor('#00000000')   // 再显式声明一次透明底色，防平台默认底色把窗口画成方块
   // 启动即进入穿透状态；指针进入圆盘时渲染进程会立刻发 false 关闭（forward:true 保证仍能收到 mousemove）
   widgetWin.setIgnoreMouseEvents(true, { forward: true })
+  /* 失败保护：页面加载完 3 秒内若没收到过穿透信号（线上仍是旧页面、脚本报错等），
+     就退回"可交互"。否则"新壳 + 旧页面"会让整个组件点不动。 */
+  widgetWin.webContents.on('did-finish-load', () => {
+    sawPassthroughSignal = false
+    if (passthroughGuard) clearTimeout(passthroughGuard)
+    passthroughGuard = setTimeout(() => {
+      if (!sawPassthroughSignal && widgetWin) widgetWin.setIgnoreMouseEvents(false)
+    }, 3000)
+  })
   if (IS_PREVIEW) widgetWin.loadFile(LOCAL_DEMO, { search: 'widget=1&demo=1' })
   else widgetWin.loadURL(WIDGET_URL)
 
