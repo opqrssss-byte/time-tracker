@@ -2,7 +2,16 @@ const { app, BrowserWindow, Menu, ipcMain, screen, session } = require('electron
 const fs = require('fs')
 const path = require('path')
 
-const WIDGET_URL = 'https://time-tracker-91208.app.workbuddy.host/?widget=1'
+// 加载地址解析（三档优先级）：
+//   1. 环境变量 WIDGET_URL（本地开发/临时指向任意页面）
+//   2. 包内自带 web/ 副本 → 本地演示模式（预览版 exe，用样例数据、不连云端）
+//   3. 线上正式地址
+const LOCAL_DEMO = path.join(process.resourcesPath || '', 'web', 'index.html')
+const IS_PREVIEW = !process.env.WIDGET_URL && app.isPackaged && fs.existsSync(LOCAL_DEMO)
+const WIDGET_URL = process.env.WIDGET_URL || 'https://time-tracker-91208.app.workbuddy.host/?widget=1'
+
+// 预览版与正式版并存：预览版用独立的 userData，避免单实例锁互相顶掉
+if (IS_PREVIEW) app.setPath('userData', path.join(app.getPath('temp'), 'tt-widget-preview'))
 const FULL_URL = 'https://time-tracker-91208.app.workbuddy.host/'
 const CAPSULE_W = 160
 const CAPSULE_H = 160
@@ -98,7 +107,8 @@ function createWidget() {
 
   widgetWin.setAlwaysOnTop(true, 'screen-saver')
   widgetWin.setVisibleOnAllWorkspaces(true)
-  widgetWin.loadURL(WIDGET_URL)
+  if (IS_PREVIEW) widgetWin.loadFile(LOCAL_DEMO, { search: 'widget=1&demo=1' })
+  else widgetWin.loadURL(WIDGET_URL)
 
   widgetWin.on('moved', () => {
     if (!widgetWin) return

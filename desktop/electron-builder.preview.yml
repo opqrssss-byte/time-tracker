@@ -1,0 +1,23 @@
+# 预览版打包配置：把 web/ 一并打进包里，双击即看新组件（样例数据、不连云端）
+# 用法：cd desktop && npx electron-builder --win portable --config electron-builder.preview.yml
+appId: com.timetracker.widget.preview
+productName: 时间追踪-本地预览
+win:
+  target: portable
+  icon: icon.ico
+portable:
+  artifactName: 时间追踪-本地预览.exe
+directories:
+  output: dist
+files:
+  - main.js
+  - preload.js
+  - package.json
+  - "!builder.log"
+  - "!preview.log"
+extraResources:
+  - from: ../web
+    to: web
+    filter:
+      - "**/*"
+      - "!**/*.log"

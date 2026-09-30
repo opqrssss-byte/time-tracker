@@ -6,6 +6,9 @@ const cloud = WorkBuddyCloud.createWorkBuddyCloud({
 
 /* ========== 运行模式 ========== */
 const IS_WIDGET = new URLSearchParams(location.search).has('widget')
+/* 演示模式（?widget=1&demo=1）：本地预览组件外观与交互，用样例数据、不连云端。
+   仅用于开发预览/效果确认，正式环境不带该参数。 */
+const IS_DEMO = IS_WIDGET && new URLSearchParams(location.search).has('demo')
 const isElectron = !!(window.electronAPI && window.electronAPI.isElectron)
 if (IS_WIDGET) document.body.classList.add('widget-mode')
 if (isElectron) document.body.classList.add('electron')
@@ -360,6 +363,61 @@ $('btn-widget-login').addEventListener('click', () => {
   else location.href = location.origin + location.pathname
 })
 
+/* ---------- 演示模式：样例数据 + 本地计时，不连云端 ---------- */
+function enterDemo() {
+  const todayAt = (h, m) => { const d = new Date(); d.setHours(h, m || 0, 0, 0); return d.toISOString() }
+  categories = [
+    { id: 'd1', name: '工作', color: '#4F8CFF', sort_order: 1 },
+    { id: 'd2', name: '学习', color: '#9B6DFF', sort_order: 2 },
+    { id: 'd3', name: '运动', color: '#2FBF71', sort_order: 3 },
+    { id: 'd4', name: '生活', color: '#F2A93B', sort_order: 4 },
+    { id: 'd5', name: '阅读', color: '#23B8D5', sort_order: 5 },
+    { id: 'd6', name: '写作', color: '#F06EAA', sort_order: 6 },
+  ]
+  todayStats = {
+    day: dayKey(new Date()),
+    byCat: { d1: 3600, d2: 1800, d4: 7200, d5: 2400 },
+    latest: { d1: '写周报', d2: '看论文', d4: '买菜做饭', d5: '读《设计心理学》' },
+    demoStartedAt: todayAt(9),
+  }
+  currentUser = { email: 'demo@local' }
+  $('view-login').classList.add('hidden')
+  $('view-widget').classList.remove('hidden')
+  $('widget-login').classList.add('hidden')
+  $('widget-plate').classList.remove('hidden')
+  renderRing()
+  renderCenter()
+  setInterval(() => { renderRing(); renderCenter() }, 1000)
+}
+
+/* 演示模式的计时：只在本地状态里开关，方便体验点击手感 */
+function demoToggle(catId) {
+  const cid = catId === '__none__' ? null : catId
+  if (runningEntry && runningEntry.category_id === cid) {
+    const dur = elapsedSec()
+    runningEntry = null
+    if (cid) todayStats.byCat[cid] = (todayStats.byCat[cid] || 0) + dur
+    else todayStats.byCat.none = (todayStats.byCat.none || 0) + dur
+    showToast(`已记录 ${fmtDurMin(Math.max(1, dur))}`)
+    if (!quickTagEntry) {
+      quickTagEntry = { id: 'demo', category_id: cid, start_time: new Date().toISOString(), end_time: new Date().toISOString(), duration_sec: dur }
+      openQuickTag(quickTagEntry)
+    }
+  } else {
+    if (runningEntry) {
+      const p = runningEntry
+      const d = elapsedSec()
+      if (p.category_id) todayStats.byCat[p.category_id] = (todayStats.byCat[p.category_id] || 0) + d
+      else todayStats.byCat.none = (todayStats.byCat.none || 0) + d
+    }
+    runningEntry = { id: 'demo-run', title: '', category_id: cid, start_time: new Date().toISOString() }
+    showToast('计时开始（演示）')
+  }
+  clearHover()
+  renderRing()
+  renderCenter()
+}
+
 async function enterWidget() {
   $('view-login').classList.add('hidden')
   $('view-widget').classList.remove('hidden')
@@ -538,6 +596,7 @@ function clearHover() {
 
 /* ---------- 点击扇区：开始 / 停止 / 切换 ---------- */
 async function onSectorClick(catId) {
+  if (IS_DEMO) { demoToggle(catId); return }   // 演示模式：本地开关，不连云端
   if (!navigator.onLine) { showToast('当前离线，无法操作'); return }
   if (anyPanelOpen()) return                       // 面板打开时不响应
   const cid = catId === '__none__' ? null : catId
@@ -579,6 +638,13 @@ function closeWidgetAddPanel() { closePanel('widget-add-panel') }
 async function saveWidgetCategory() {
   const name = $('widget-new-cat-name').value.trim()
   if (!name) { showToast('请输入分类名称'); return }
+  if (IS_DEMO) {                                   // 演示模式：只加在本地
+    categories.push({ id: 'demo-c' + Date.now(), name, color: widgetSwatchColor, sort_order: categories.length + 1 })
+    showToast('分类已添加（演示）')
+    closeWidgetAddPanel()
+    renderRing(); renderCenter()
+    return
+  }
   const maxSort = categories.reduce((m, c) => Math.max(m, c.sort_order || 0), 0)
   const { error } = await cloud.database.from('categories')
     .insert({ name, color: widgetSwatchColor, sort_order: maxSort + 1 }).select()
@@ -948,6 +1014,12 @@ async function applyQuickTag(categoryId) {
   const entry = quickTagEntry
   closeQuickTag()
   if (!entry || entry.category_id === categoryId) return
+  if (IS_DEMO) {                                   // 演示模式：只走本地
+    entry.category_id = categoryId
+    const cat = catById(categoryId)
+    showToast(`已标记为「${cat ? cat.name : ''}」（演示）`)
+    return
+  }
   const { data, error } = await cloud.database.from('time_entries')
     .update({ category_id: categoryId, updated_at: new Date().toISOString() })
     .eq('id', entry.id).select()
@@ -1351,6 +1423,7 @@ window.addEventListener('offline', updateOfflineBanner)
 /* ========== 启动 ========== */
 ;(async function init() {
   updateOfflineBanner()
+  if (IS_DEMO) { enterDemo(); return }   // ?widget=1&demo=1：本地预览，不校验登录
   const { data: session, error } = await cloud.auth.getSession()
   if (error || !session) { showLogin(); return }
   currentUser = session.user || null

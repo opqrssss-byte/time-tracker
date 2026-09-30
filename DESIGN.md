@@ -179,5 +179,25 @@
 | `web/index.html` | `#view-widget`：`#widget-plate`（环形 + 中心 + 「+」）、三个 `.widget-panel`、登录盘 |
 | `web/app.js` | `widgetSectors()` 角度分配 · `renderRing()` 环形渲染 · `renderCenter()` 三态读数 · `setHover/clearHover` · `onSectorClick` · `openPanel/closePanel` · 新增分类与全部分类面板 |
 | `web/style.css` | `body.widget-mode` token 块 + 全组件样式（L263 起） |
-| `desktop/main.js` | 窗口 160×160 · resize 夹取 140–460 × 72–520 · 右键菜单「新增分类」 |
+| `desktop/main.js` | 窗口 160×160 · resize 夹取 140–460 × 72–520 · 右键菜单「新增分类」· `WIDGET_URL` 环境变量覆盖 |
 | `desktop/preload.js` | `resizeTo(w,h)` · `onAddCat(cb)` |
+
+---
+
+## 9. 本地预览（不依赖线上发布）
+
+组件的皮肤在网页端，正式生效需要发布线上页面。为了在平台发布不可用或本地迭代时也能看真实效果，提供两条预览通道：
+
+**① 浏览器预览**（最快）
+```bash
+python -m http.server 8899 --directory web
+# 打开 http://localhost:8899/index.html?widget=1&demo=1
+```
+
+**② 桌面悬浮窗预览**（真实置顶胶囊）
+```bash
+WIDGET_URL="http://127.0.0.1:8899/index.html?widget=1&demo=1" \
+  ./desktop/dist/win-unpacked/时间追踪.exe --user-data-dir="$LOCALAPPDATA/Temp/tt-widget-preview"
+```
+
+`?demo=1` 的约定：**仅当同时带 `widget` 参数时生效**，加载样例分类与今日数据、点击扇区只走本地状态（不写云端）、新增分类只加在内存；正式环境不带该参数，代码路径完全不走。`--user-data-dir` 用于避开与正式组件的单实例锁冲突（预览可与正式版并存）。
