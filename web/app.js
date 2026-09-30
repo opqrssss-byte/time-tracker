@@ -12,6 +12,8 @@ const IS_DEMO = IS_WIDGET && new URLSearchParams(location.search).has('demo')
 const isElectron = !!(window.electronAPI && window.electronAPI.isElectron)
 if (IS_WIDGET) document.body.classList.add('widget-mode')
 if (isElectron) document.body.classList.add('electron')
+// 新壳才有的能力：手动拖动（任意位置）。旧壳继续走 -webkit-app-region
+if (isElectron && window.electronAPI.dragStart) document.body.classList.add('has-drag-ipc')
 
 /* ========== 全局状态 ========== */
 let pendingEmailOtp = null
@@ -338,7 +340,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
    表面/描边/排印遵循 Raycast 设计系统（表面阶梯 + 发丝描边 + 无投影），详见 DESIGN.md
 */
 const WIDGET_W = 160           // 基础窗宽（圆形玻璃盘 152 + 边距）
-const WIDGET_H = 168           // 比盘高 16px：给盘底「+」入口留出不被窗口裁切的余量
+const WIDGET_H = 200           // 盘 152 + 下方留给「+」入口与提示条（提示条不再压在圆盘上）
 const WIDGET_PANEL_W = 260     // 展开面板时的窗口尺寸
 const WIDGET_PANEL_H = 320
 const RING_CX = 60
@@ -347,7 +349,7 @@ const RING_SW = 11             // 环带宽（中心留 98px 放读数，可容 
 const RING_CIRC = 2 * Math.PI * RING_R
 const SEG_GAP_VIS = 4          // 扇区视觉间隙（圆头线帽各向外延伸 SW/2）
 const MAX_SECTORS = 7          // 环上直接展示的最大扇区数，其余合并为「其他」
-const GHOST_DEG = 6            // 今日无记录的分类保留的最小可点角度（幽灵扇区）
+const GHOST_DEG = 4.5          // 今日无记录的分类保留的最小可点角度（幽灵扇区，越小越含蓄）
 /* —— 滚轮交互（仿三星旋转表圈：旋转=移动高亮，停顿/点击=确认）—— */
 const WHEEL_STEP = 100         // 累积 |deltaY| 达到该值才走一步（鼠标一格≈100~120，触控板小增量先攒）
 const WHEEL_LOCK_MS = 150      // 步进后锁定时长：忽略惯性连发，一次事件至多一步
@@ -460,6 +462,79 @@ function widgetResize(width, height) {
   if (window.electronAPI.resizeTo) window.electronAPI.resizeTo(width, height)
   else window.electronAPI.resize(height)
 }
+
+/* ========== 点击穿透 ==========
+   Electron 透明窗口的透明区域**不会**穿透点击，窗口矩形会挡住下方/右侧的桌面点击。
+   做法：指针不在"可交互区域"（圆盘圆形范围 / 已展开的面板）时，让主进程忽略鼠标事件。 */
+let ignoringMouse = null
+function inPlateArea(x, y) {
+  const el = $('widget-plate')
+  if (!el || el.classList.contains('hidden')) return false
+  const b = el.getBoundingClientRect()
+  const cx = b.left + b.width / 2
+  const cy = b.top + b.height / 2
+  const r = b.width / 2
+  return (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r
+}
+function inRect(x, y, el) {
+  if (!el || el.classList.contains('hidden')) return false
+  const b = el.getBoundingClientRect()
+  return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom
+}
+function isInteractiveAt(x, y) {
+  if (inPlateArea(x, y)) return true
+  return ['widget-add-panel', 'widget-others-panel', 'widget-tagbar'].some((id) => inRect(x, y, $(id)))
+}
+function setMousePassthrough(ignore) {
+  if (!isElectron || !window.electronAPI.ignoreMouse) return
+  if (ignore === ignoringMouse) return
+  ignoringMouse = ignore
+  window.electronAPI.ignoreMouse(ignore)
+}
+document.addEventListener('mousemove', (e) => {
+  if (!IS_WIDGET) return
+  setMousePassthrough(!isInteractiveAt(e.clientX, e.clientY))
+})
+document.addEventListener('mouseleave', () => setMousePassthrough(true))   // 指针离开窗口 → 全部放行
+
+/* ========== 任意位置拖动 ==========
+   按下圆盘任意处即可拖动（不只盘缘）。位移在主进程按光标计算，指针移出窗口也不丢。
+   拖动阈值 4px 用来区分"点击"与"拖动"；拖动结束后紧随的 click 会被吞掉，避免误触发切换/停止。 */
+let dragging = false
+let dragMoved = false
+let dragStartPt = null
+const canManualDrag = () => isElectron && !!window.electronAPI.dragStart
+
+function beginDrag(e) {
+  if (e.button !== 0) return
+  if (e.target.closest('.widget-panel')) return     // 面板内（输入框等）不拖
+  if (!canManualDrag()) return                      // 旧壳：走 -webkit-app-region
+  dragging = true
+  dragMoved = false
+  dragStartPt = { x: e.screenX, y: e.screenY }
+  window.electronAPI.dragStart()
+}
+$('widget-plate').addEventListener('mousedown', beginDrag)
+window.addEventListener('mousemove', (e) => {
+  if (!dragging) return
+  if (Math.abs(e.screenX - dragStartPt.x) + Math.abs(e.screenY - dragStartPt.y) > 4) {
+    dragMoved = true
+    document.body.classList.add('is-dragging')
+  }
+})
+window.addEventListener('mouseup', () => {
+  if (!dragging) return
+  dragging = false
+  document.body.classList.remove('is-dragging')
+  if (window.electronAPI.dragEnd) window.electronAPI.dragEnd()
+})
+/* 捕获阶段吞掉"拖动之后"的那次 click */
+$('widget-plate').addEventListener('click', (e) => {
+  if (!dragMoved) return
+  dragMoved = false
+  e.stopPropagation()
+  e.preventDefault()
+}, true)
 
 /* 面板统一开关（新增分类 / 其他分类 / 快速标签） */
 function anyPanelOpen() {

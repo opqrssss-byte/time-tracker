@@ -308,14 +308,18 @@ body.widget-mode .offline-banner { display: none !important; }
     linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 46%),
     var(--w-glass);
   border: 1px solid var(--w-hairline-soft);
-  /* 层次用「内阴影 + 描边」表达：外投影会被 160×168 的透明窗口矩形裁切，
+  /* 层次用「内阴影 + 描边」表达：外投影会被窗口矩形裁切，
      在桌面上会露出一圈方形硬边（2026-09-30 实际踩过），也正好回到 Raycast「不用投影」的规范 */
   box-shadow: inset 0 -10px 22px rgba(0, 0, 0, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  -webkit-app-region: drag;
+  cursor: grab;
 }
-body.electron #widget-plate button,
-body.electron #widget-plate input,
-body.electron #widget-plate svg { -webkit-app-region: no-drag; }
+body.is-dragging #widget-plate { cursor: grabbing; }
+/* 旧壳（无拖动 IPC）退回 app-region 拖拽；新壳走 app.js 里的手动拖动，
+   这样环上的点击/滚轮/悬停都不受 app-region 影响（那正是"只有盘缘能拖"的根因） */
+body.electron:not(.has-drag-ipc) #widget-plate { -webkit-app-region: drag; }
+body.electron:not(.has-drag-ipc) #widget-plate button,
+body.electron:not(.has-drag-ipc) #widget-plate input,
+body.electron:not(.has-drag-ipc) #widget-plate svg { -webkit-app-region: no-drag; }
 
 /* —— 环形 —— */
 #widget-ring-wrap { position: relative; width: 120px; height: 120px; }
@@ -397,7 +401,7 @@ body.electron #widget-plate svg { -webkit-app-region: no-drag; }
 }
 #widget-state-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #widget-sub {
-  font-size: 10px; letter-spacing: 0.1px; color: var(--w-mute);
+  font-size: 9.5px; letter-spacing: 0.1px; color: var(--w-ash);
   max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* 悬停次要通道：只在这里显示被悬停分类的信息，不打扰上方的主读数 */
@@ -521,8 +525,13 @@ body.widget-mode #view-app,
 body.widget-mode #view-login { display: none !important; }
 body.widget-mode #view-widget.hidden { display: none !important; }
 
-/* widget 模式的 toast 适配小窗 */
-body.widget-mode .toast { bottom: 12px; font-size: 12px; padding: 8px 16px; }
+/* widget 模式的 toast 适配：放到圆盘下方的留白里，不再压在盘上 */
+body.widget-mode .toast {
+  bottom: 6px; font-size: 11px; font-weight: 500;
+  padding: 6px 14px; letter-spacing: 0.2px;
+  background: rgba(18, 18, 18, 0.94);
+  border: 1px solid var(--w-hairline);
+}
 /* ========== 快速标签弹窗 ========== */
 .tag-entry-info {
   color: var(--text-dim); font-size: 13px; text-align: center;

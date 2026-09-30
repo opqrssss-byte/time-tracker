@@ -14,7 +14,7 @@ const WIDGET_URL = process.env.WIDGET_URL || 'https://time-tracker-91208.app.wor
 if (IS_PREVIEW) app.setPath('userData', path.join(app.getPath('temp'), 'tt-widget-preview'))
 const FULL_URL = 'https://time-tracker-91208.app.workbuddy.host/'
 const CAPSULE_W = 160
-const CAPSULE_H = 168
+const CAPSULE_H = 200          // 盘 152 + 下方留给「+」入口与提示条（提示条不再压在圆盘上）
 const STATE_FILE = path.join(app.getPath('userData'), 'widget-state.json')
 
 let widgetWin = null
@@ -51,6 +51,36 @@ if (!gotLock) {
     })
 
     ipcMain.on('widget:open-full', () => openFull())
+
+    /* 点击穿透：透明区域默认放行给桌面（否则窗口矩形会挡住下方/右侧的点击）。
+       指针进入可交互区域（圆盘/面板）时由渲染进程发 false 关闭穿透。 */
+    ipcMain.on('widget:ignore-mouse', (_e, ignore) => {
+      if (!widgetWin) return
+      widgetWin.setIgnoreMouseEvents(!!ignore, { forward: true })
+    })
+
+    /* 任意位置拖动：按下即在主进程按光标位移移动窗口。
+       比 app-region 更可控，且不会与环上的点击/滚轮/悬停冲突（app-region 需把环设为 no-drag，
+       那正是"只有盘缘能动"的原因）。 */
+    let dragTimer = null
+    let dragOffset = { x: 0, y: 0 }
+    const stopDrag = () => {
+      if (dragTimer) { clearInterval(dragTimer); dragTimer = null }
+    }
+    ipcMain.on('widget:drag-start', () => {
+      if (!widgetWin) return
+      widgetWin.setIgnoreMouseEvents(false)
+      const cur = screen.getCursorScreenPoint()
+      const [wx, wy] = widgetWin.getPosition()
+      dragOffset = { x: cur.x - wx, y: cur.y - wy }
+      stopDrag()
+      dragTimer = setInterval(() => {
+        if (!widgetWin) return
+        const p = screen.getCursorScreenPoint()
+        widgetWin.setPosition(p.x - dragOffset.x, p.y - dragOffset.y)
+      }, 16)
+    })
+    ipcMain.on('widget:drag-end', stopDrag)
 
     ipcMain.on('widget:menu', () => {
       const autoLaunch = app.getLoginItemSettings().openAtLogin
@@ -109,6 +139,9 @@ function createWidget() {
 
   widgetWin.setAlwaysOnTop(true, 'screen-saver')
   widgetWin.setVisibleOnAllWorkspaces(true)
+  widgetWin.setBackgroundColor('#00000000')   // 再显式声明一次透明底色，防平台默认底色把窗口画成方块
+  // 启动即进入穿透状态；指针进入圆盘时渲染进程会立刻发 false 关闭（forward:true 保证仍能收到 mousemove）
+  widgetWin.setIgnoreMouseEvents(true, { forward: true })
   if (IS_PREVIEW) widgetWin.loadFile(LOCAL_DEMO, { search: 'widget=1&demo=1' })
   else widgetWin.loadURL(WIDGET_URL)
 

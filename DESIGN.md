@@ -148,12 +148,35 @@
 
 | 状态 | 窗口尺寸 | 说明 |
 |---|---|---|
-| 基础 | 160×168 | 盘 152 + 边距 4；**底部多留 16px** 给盘底「+」入口，避免被窗口裁切 |
+| 基础 | 160×200 | 盘 152（y 4–156）+ 底部留白给「+」（y 135–161）与提示条（y 165–194） |
 | 面板展开 | 260×320 | 新增分类 / 全部分类 / 快速标签 |
 | IPC | `resizeTo(w,h)`；旧 exe 回退 `resize(h)` | 旧壳宽度固定，会露出透明区（可接受，重打包后消失） |
-| 窗口标志 | `transparent:true` + `backgroundColor:'#00000000'` + `hasShadow:false` + `roundedCorners:false` | 四件套缺一都可能让系统在窗口层画出方形底色/阴影 |
-| 拖拽 | `#widget-plate` 为 drag 区，按钮/输入/svg 为 no-drag | Electron 契约 |
+| 窗口标志 | `transparent:true` + `setBackgroundColor('#00000000')` + `hasShadow:false` + `roundedCorners:false` | 四件套缺一都可能让系统在窗口层画出方形底色/阴影 |
+| **点击穿透** | 透明区域默认放行给桌面；指针进入圆盘圆形范围或已展开面板时关闭穿透 | 见 §5.1 |
+| **拖动** | 手动拖动（mousedown → 主进程按光标位移 setPosition → mouseup） | 见 §5.2；旧壳回退 `-webkit-app-region` |
+| 提示条 | 固定在圆盘下方，不再压在圆上 | 窗口高度从 168→200 就是为了它 |
 | 右键 | Electron 菜单：打开完整版 / **新增分类** / 开机自启 / 退出 | 新增分类的第二个入口（可发现性兜底） |
+
+### 5.1 点击穿透（Electron 透明窗口的硬限制）
+
+**背景**：Electron 官方明确 "You cannot click through the transparent area" —— 透明窗口的**整个矩形**都会拦截点击，用户反馈"右下侧非显示区域点不动"就是这个原因。
+
+**做法**：默认 `setIgnoreMouseEvents(true, { forward: true })`；渲染进程在 `mousemove` 里判断指针是否落在**可交互区域**（圆盘按**圆形**判定，面板按矩形判定），状态变化时才发 IPC 切换。`forward: true` 保证穿透状态下仍能收到 mousemove，从而能"探测"指针何时进入圆盘。
+
+- 判定：`inPlateArea()` 用圆方程（不是外接矩形，否则四个角会误判为可交互）
+- 指针离开窗口（`document.mouseleave`）→ 立即恢复穿透
+- 只在状态变化时发 IPC（`ignoringMouse` 记忆），避免每条 mousemove 都过 IPC
+- 副作用：穿透状态下 `:hover` 不触发 —— 但指针进入圆盘后穿透立即关闭，悬停交互正常
+
+### 5.2 任意位置拖动（取代 app-region）
+
+**背景**：原先靠 `-webkit-app-region: drag`，但环必须是 `no-drag` 才能点击/滚轮 → 只剩圆盘外圈约 16px 环带能拖，用户反馈"拖动极其困难"。
+
+**做法**：新壳走手动拖动 —— renderer 在圆盘任意处 `mousedown` → 发 `widget:drag-start`；主进程记录「光标 − 窗口」偏移，并每 16ms 用 `screen.getCursorScreenPoint()` 更新 `setPosition`；`mouseup` → `widget:drag-end` 停止。位移在主进程按**屏幕光标**计算，指针移出窗口也不丢。
+
+- 阈值 4px 区分"点击"与"拖动"；拖动结束后紧随的 `click` 在捕获阶段被吞掉，避免误触发切换/停止
+- 拖动中给 `body.is-dragging`，光标变 `grabbing`
+- 旧壳（无拖动 IPC）用 `body.electron:not(.has-drag-ipc)` 守卫回退到 app-region
 
 ---
 
@@ -193,6 +216,8 @@
 - 不要为"更精确的统计"取消幽灵扇区（会失去新一天的可点入口）
 - 不要把浮点秒直接交给格式化函数（会出现 `5.343000000000001秒` 这类显示）
 - **不要强化"停止"**：不加停止按钮、不做双击停止——产品最终形态是无暂停的连续记录，停止只是当前设备条件下的临时妥协
+- **不要用 `-webkit-app-region` 做拖动**（新壳）：它要求交互元素设 `no-drag`，会把可拖区域压成盘缘环带；用 §5.2 的手动拖动
+- **不要把提示条/面板放在圆盘之上**：窗口底部留白就是给它们的，压在盘上会像"圆里塞了个方框"
 
 ---
 
