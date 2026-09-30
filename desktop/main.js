@@ -13,8 +13,12 @@ const WIDGET_URL = process.env.WIDGET_URL || 'https://time-tracker-91208.app.wor
 // 预览版与正式版并存：预览版用独立的 userData，避免单实例锁互相顶掉
 if (IS_PREVIEW) app.setPath('userData', path.join(app.getPath('temp'), 'tt-widget-preview'))
 const FULL_URL = 'https://time-tracker-91208.app.workbuddy.host/'
-const CAPSULE_W = 160
-const CAPSULE_H = 200          // 盘 152 + 下方留给「+」入口与提示条（提示条不再压在圆盘上）
+/* 固定窗口尺寸：圆盘 + 面板一次到位，**运行期不再 setSize**。
+   原因：Windows 上透明窗口程序化改尺寸会让 backing store 只重绘变化区域，
+   留下竖直缝 / 顶部缺块残影（2026-09-30 用户截图实测）。多出的透明区域靠点击穿透放行，无副作用。 */
+const CAPSULE_W = 260
+const CAPSULE_H = 380
+const FIXED_WINDOW = true      // 固定窗口：主进程拒绝一切改尺寸请求（防旧线上页面触发 setSize 残影）
 const STATE_FILE = path.join(app.getPath('userData'), 'widget-state.json')
 
 let widgetWin = null
@@ -45,6 +49,7 @@ if (!gotLock) {
 
     ipcMain.on('widget:resize', (_e, payload) => {
       if (!widgetWin) return
+      if (FIXED_WINDOW) return   // 固定窗口模式下忽略（页面已不再调用；旧页面调也无效，避免残影）
       // 兼容两种协议：数字 = 旧协议（只改高度）；对象 = 新协议 {width, height}
       const isObj = payload && typeof payload === 'object'
       const w = Math.max(140, Math.min(460, Number(isObj ? payload.width : CAPSULE_W) || CAPSULE_W))

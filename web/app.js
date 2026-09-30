@@ -37,8 +37,15 @@ let quickTagEntry = null           // 停止后待打标签的记录
 /* ========== 工具 ========== */
 const $ = (id) => document.getElementById(id)
 
+function hideToast() {
+  const t = $('toast')
+  if (t) t.classList.add('hidden')
+}
+
 function showToast(msg, ms = 2600) {
   const t = $('toast')
+  // 组件模式下：面板占据圆盘下方空间，此时不弹提示条，避免叠在面板上
+  if (IS_WIDGET && typeof anyPanelOpen === 'function' && anyPanelOpen()) return
   t.textContent = msg
   t.classList.remove('hidden')
   clearTimeout(showToast._t)
@@ -339,9 +346,9 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
    设计依据：Apple HIG Activity Rings（圆头进度弧 + 中心读数）· Orbital 桌面番茄钟（极简光环 + 微光呼吸）
    表面/描边/排印遵循 Raycast 设计系统（表面阶梯 + 发丝描边 + 无投影），详见 DESIGN.md
 */
-const WIDGET_W = 160           // 基础窗宽（圆形玻璃盘 152 + 边距）
-const WIDGET_H = 200           // 盘 152 + 下方留给「+」入口与提示条（提示条不再压在圆盘上）
-const WIDGET_PANEL_W = 260     // 展开面板时的窗口尺寸
+const WIDGET_W = 260           // 窗口固定尺寸（盘 152 居中 + 面板空间；不再运行期改尺寸）
+const WIDGET_H = 380
+const WIDGET_PANEL_W = 260     // 旧壳（会改尺寸的那种）展开面板时用的尺寸
 const WIDGET_PANEL_H = 320
 const RING_CX = 60
 const RING_R = 54              // 环半径（玻璃盘 152 → 外缘 59，留 15px 呼吸位）
@@ -356,7 +363,6 @@ const WHEEL_LOCK_MS = 150      // 步进后锁定时长：忽略惯性连发，�
 const WHEEL_IDLE_RESET_MS = 300 // 停这么久累积清零，避免两次半格拼成一格
 const FOCUS_CONFIRM_MS = 900   // 选中后停顿多久自动确认（开始 / 切换）
 const RING_CONFIRM_SW = 3      // 确认进度弧线宽
-const DETENT_DEG = 3.5         // 档位反馈扭动幅度
 const WIDGET_SWATCH_COLORS = ['#4F8CFF', '#9B6DFF', '#2FBF71', '#F2A93B', '#FF5A5A', '#23B8D5', '#F06EAA', '#8a91a3']
 let widgetSwatchColor = WIDGET_SWATCH_COLORS[0]
 let ringData = []              // 环上扇区数据（供中心读数使用）
@@ -386,7 +392,6 @@ $('btn-widget-login').addEventListener('click', () => {
 
 /* ---------- 演示模式：样例数据 + 本地计时，不连云端 ---------- */
 function enterDemo() {
-  const todayAt = (h, m) => { const d = new Date(); d.setHours(h, m || 0, 0, 0); return d.toISOString() }
   categories = [
     { id: 'd1', name: '工作', color: '#4F8CFF', sort_order: 1 },
     { id: 'd2', name: '学习', color: '#9B6DFF', sort_order: 2 },
@@ -399,7 +404,6 @@ function enterDemo() {
     day: dayKey(new Date()),
     byCat: { d1: 3600, d2: 1800, d4: 7200, d5: 2400 },
     latest: { d1: '写周报', d2: '看论文', d4: '买菜做饭', d5: '读《设计心理学》' },
-    demoStartedAt: todayAt(9),
   }
   currentUser = { email: 'demo@local' }
   $('view-login').classList.add('hidden')
@@ -408,7 +412,8 @@ function enterDemo() {
   $('widget-plate').classList.remove('hidden')
   renderRing()
   renderCenter()
-  setInterval(() => { tickRing(); renderCenter() }, 1000)
+  stopTicker()                                   // 演示的心跳也交给全局 ticker，便于统一清理
+  ticker = setInterval(() => { tickRing(); renderCenter() }, 1000)
 }
 
 /* 演示模式的计时：只在本地状态里开关，方便体验点击手感 */
@@ -456,9 +461,10 @@ async function enterWidget() {
   triggerSync()
 }
 
-/* 扩窗：新 exe 用 resizeTo，旧 exe 兜底只扩高度 */
+/* 扩窗：固定窗口的新壳不调（改尺寸会在 Windows 上留残影）；旧壳仍按老协议扩窗 */
 function widgetResize(width, height) {
   if (!isElectron) return
+  if (window.electronAPI.fixedSize) return          // 固定窗：面板只做 DOM 显隐
   if (window.electronAPI.resizeTo) window.electronAPI.resizeTo(width, height)
   else window.electronAPI.resize(height)
 }
@@ -483,6 +489,7 @@ function inRect(x, y, el) {
 }
 function isInteractiveAt(x, y) {
   if (inPlateArea(x, y)) return true
+  if (inRect(x, y, $('widget-login'))) return true      // 未登录态：登录盘也要可点，否则按钮永远点不到
   return ['widget-add-panel', 'widget-others-panel', 'widget-tagbar'].some((id) => inRect(x, y, $(id)))
 }
 function setMousePassthrough(ignore) {
@@ -515,6 +522,7 @@ function beginDrag(e) {
   window.electronAPI.dragStart()
 }
 $('widget-plate').addEventListener('mousedown', beginDrag)
+$('widget-login').addEventListener('mousedown', beginDrag)   // 未登录盘同样可拖动
 window.addEventListener('mousemove', (e) => {
   if (!dragging) return
   if (Math.abs(e.screenX - dragStartPt.x) + Math.abs(e.screenY - dragStartPt.y) > 4) {
@@ -543,11 +551,14 @@ function anyPanelOpen() {
 }
 function openPanel(id) {
   clearFocus()             // 面板语义优先，取消滚轮选中
+  hideToast()              // 提示条与面板抢同一块位置
   $(id).classList.remove('hidden')
   widgetResize(WIDGET_PANEL_W, WIDGET_PANEL_H)
   renderCenter()
 }
 function closePanel(id) {
+  // 关键：面板里的输入框即使被隐藏仍会持有焦点，会让"输入框聚焦时忽略滚轮/方向键"的守卫一直生效
+  if (document.activeElement && $(id).contains(document.activeElement)) document.activeElement.blur()
   $(id).classList.add('hidden')
   if (!anyPanelOpen()) widgetResize(WIDGET_W, WIDGET_H)
   renderCenter()
@@ -683,9 +694,16 @@ function applyRingStateClasses() {
     arc.el.classList.toggle('focused', focused)
     arc.el.classList.toggle('hovered', hovered)
     arc.el.classList.toggle('dim', !!hoverCatId && !focusCatId && hoverCatId !== arc.id)
-    arc.el.style.filter = (active || focused)
-      ? `drop-shadow(0 0 6px ${hexToRgba(it.color, active ? 0.6 : 0.45)})`
-      : ''
+    if (active || focused) {
+      // 注意：内联 filter 会盖掉 CSS 的 :hover{filter}，所以悬停提亮要自己拼进来
+      const f = [active
+        ? `drop-shadow(0 0 6px ${hexToRgba(it.color, 0.6)})`
+        : `drop-shadow(0 0 6px ${hexToRgba(it.color, 0.45)})`]
+      if (hovered) f.push('brightness(1.35)')
+      arc.el.style.filter = f.join(' ')
+    } else {
+      arc.el.style.filter = ''
+    }
   })
   if (confirmArcEl) confirmArcEl.classList.toggle('focused', !!focusCatId)
 }
@@ -918,6 +936,7 @@ function renderSwatches() {
 function openWidgetAddPanel() {
   clearHover()
   $('widget-new-cat-name').value = ''
+  setAddError('')
   renderSwatches()
   openPanel('widget-add-panel')
   $('widget-new-cat-name').focus()
@@ -925,13 +944,22 @@ function openWidgetAddPanel() {
 
 function closeWidgetAddPanel() { closePanel('widget-add-panel') }
 
+/* 校验/错误反馈走面板内的内联错误行（提示条在面板打开时会被隐藏，不能用来报错） */
+function setAddError(msg) {
+  const el = $('widget-add-error')
+  if (!el) return
+  el.textContent = msg || ''
+  el.classList.toggle('hidden', !msg)
+}
+
 async function saveWidgetCategory() {
   const name = $('widget-new-cat-name').value.trim()
-  if (!name) { showToast('请输入分类名称'); return }
+  if (!name) { setAddError('请输入分类名称'); return }
   if (IS_DEMO) {                                   // 演示模式：只加在本地
     categories.push({ id: 'demo-c' + Date.now(), name, color: widgetSwatchColor, sort_order: categories.length + 1 })
-    showToast('分类已添加（演示）')
+    setAddError('')
     closeWidgetAddPanel()
+    showToast('分类已添加（演示）')
     renderRing(); renderCenter()
     return
   }
@@ -939,11 +967,12 @@ async function saveWidgetCategory() {
   const { error } = await cloud.database.from('categories')
     .insert({ name, color: widgetSwatchColor, sort_order: maxSort + 1 }).select()
   if (error) {
-    showToast(error.code === '23505' ? '同名分类已存在' : '添加失败，请重试')
+    setAddError(error.code === '23505' ? '同名分类已存在' : '添加失败，请重试')
     return
   }
+  setAddError('')
+  closeWidgetAddPanel()                            // 先收面板再提示，避免提示条被面板挡住
   showToast('分类已添加')
-  closeWidgetAddPanel()
   await loadCategories()
   renderRing()
   renderCenter()
@@ -1007,6 +1036,7 @@ $('widget-plate').addEventListener('contextmenu', (e) => {
 })
 
 $('widget-add-cat').addEventListener('click', openWidgetAddPanel)
+$('widget-new-cat-name').addEventListener('input', () => setAddError(''))   // 重新输入即清掉错误
 $('btn-widget-cat-save').addEventListener('click', saveWidgetCategory)
 $('btn-widget-cat-cancel').addEventListener('click', closeWidgetAddPanel)
 $('btn-widget-others-close').addEventListener('click', () => closePanel('widget-others-panel'))
@@ -1031,7 +1061,7 @@ function renderCenter() {
   const hoverEl = $('widget-hover')
   const sub = $('widget-sub')
   const addBtn = $('widget-add-cat')
-  if (!timeEl) return
+  if (!timeEl || !dot || !textEl || !hoverEl || !sub || !addBtn) return
   const running = !!runningEntry
   const cat = running ? catById(runningEntry.category_id) : null
 

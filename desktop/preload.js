@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
+  fixedSize: true,                                                          // 固定窗口：页面不要再调 resize
   resize: (height) => ipcRenderer.send('widget:resize', height),            // 旧协议：只改高度
   resizeTo: (width, height) => ipcRenderer.send('widget:resize', { width, height }), // 新协议
   openFull: () => ipcRenderer.send('widget:open-full'),
