@@ -16,33 +16,47 @@
 
 <!-- ========== 桌面悬浮组件模式（?widget=1，供 Electron 悬浮窗使用） ========== -->
 <div id="view-widget" class="view hidden">
-  <div id="widget-main">
+  <div id="widget-plate">
     <div id="widget-ring-wrap">
-      <svg id="widget-ring" viewBox="0 0 118 118" width="118" height="118"></svg>
-      <button id="widget-add-cat" class="hidden" type="button" title="新增分类">+</button>
+      <svg id="widget-ring" viewBox="0 0 120 120" width="120" height="120"></svg>
+      <div id="widget-center">
+        <div id="widget-time" class="idle">00:00</div>
+        <div id="widget-state"><span id="widget-state-dot" class="state-dot"></span><span id="widget-state-text">空闲</span></div>
+        <div id="widget-sub" class="hidden"></div>
+      </div>
     </div>
-    <div id="widget-side">
-      <div id="widget-time" class="idle">00:00</div>
-      <div id="widget-state"><span id="widget-state-dot" class="state-dot"></span><span id="widget-state-text">空闲</span></div>
-    </div>
+    <button id="widget-add-cat" type="button" title="新增分类">+</button>
   </div>
-  <div id="widget-tip" class="hidden"></div>
-  <div id="widget-add-panel" class="hidden">
+
+  <!-- 新增分类面板 -->
+  <div id="widget-add-panel" class="widget-panel hidden">
+    <div class="widget-panel-title">新增分类</div>
     <input id="widget-new-cat-name" type="text" maxlength="20" placeholder="分类名称">
     <div id="widget-color-swatches"></div>
-    <div class="widget-add-actions">
-      <button id="btn-widget-cat-cancel" class="btn-link" type="button">取消</button>
-      <button id="btn-widget-cat-save" class="btn-secondary" type="button">添加</button>
+    <div class="widget-panel-actions">
+      <button id="btn-widget-cat-cancel" class="btn-ghost" type="button">取消</button>
+      <button id="btn-widget-cat-save" class="btn-solid" type="button">添加</button>
     </div>
   </div>
-  <div id="widget-tagbar" class="widget-tagbar hidden">
-    <div class="widget-tagbar-title">补个标题？也可改分类</div>
-    <div id="widget-tags" class="widget-tags"></div>
-    <button id="widget-tag-skip" class="btn-link" type="button">跳过</button>
+
+  <!-- 其他分类面板（扇区超过 7 个时） -->
+  <div id="widget-others-panel" class="widget-panel hidden">
+    <div class="widget-panel-title">全部分类</div>
+    <div id="widget-others-list" class="widget-others-list"></div>
+    <div class="widget-panel-actions">
+      <button id="btn-widget-others-close" class="btn-ghost" type="button">关闭</button>
+    </div>
   </div>
+
+  <div id="widget-tagbar" class="widget-panel hidden">
+    <div class="widget-panel-title">补个标题？也可改分类</div>
+    <div id="widget-tags" class="widget-tags"></div>
+    <button id="widget-tag-skip" class="btn-ghost" type="button">跳过</button>
+  </div>
+
   <div id="widget-login" class="widget-login hidden">
     <span class="widget-login-text">未登录</span>
-    <button id="btn-widget-login" class="btn-secondary" type="button">打开完整版登录</button>
+    <button id="btn-widget-login" class="btn-solid" type="button">打开完整版登录</button>
   </div>
 </div>
 

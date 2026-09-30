@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resizeTo: (width, height) => ipcRenderer.send('widget:resize', { width, height }), // 新协议
   openFull: () => ipcRenderer.send('widget:open-full'),
   menu: () => ipcRenderer.send('widget:menu'),
+  onAddCat: (cb) => ipcRenderer.on('widget:add-cat', () => cb()),
 })
