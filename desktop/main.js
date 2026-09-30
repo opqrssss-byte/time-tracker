@@ -14,7 +14,7 @@ const WIDGET_URL = process.env.WIDGET_URL || 'https://time-tracker-91208.app.wor
 if (IS_PREVIEW) app.setPath('userData', path.join(app.getPath('temp'), 'tt-widget-preview'))
 const FULL_URL = 'https://time-tracker-91208.app.workbuddy.host/'
 const CAPSULE_W = 160
-const CAPSULE_H = 160
+const CAPSULE_H = 168
 const STATE_FILE = path.join(app.getPath('userData'), 'widget-state.json')
 
 let widgetWin = null
@@ -90,6 +90,8 @@ function createWidget() {
     x, y,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000',   // 明确透明底色，避免平台默认底色把圆盘渲染成方块
+    roundedCorners: false,          // 禁止系统在窗口层再加圆角/阴影（那会在圆盘外露一圈方形硬边）
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,

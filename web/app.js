@@ -64,8 +64,10 @@ function fmtClock(iso) {
 
 function fmtDurMin(sec) {
   if (sec == null) return '-'
-  if (sec < 60) return `${sec}秒`
-  const m = Math.floor(sec / 60)
+  // 一律按整秒处理：累计/实时时长都可能带浮点小数（如 5.343），不能直接展示
+  const s = Math.max(0, Math.floor(Number(sec) || 0))
+  if (s < 60) return `${s}秒`
+  const m = Math.floor(s / 60)
   if (m < 60) return `${m}分钟`
   return `${Math.floor(m / 60)}小时${m % 60 ? (m % 60) + '分' : ''}`
 }
@@ -336,7 +338,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
    表面/描边/排印遵循 Raycast 设计系统（表面阶梯 + 发丝描边 + 无投影），详见 DESIGN.md
 */
 const WIDGET_W = 160           // 基础窗宽（圆形玻璃盘 152 + 边距）
-const WIDGET_H = 160
+const WIDGET_H = 168           // 比盘高 16px：给盘底「+」入口留出不被窗口裁切的余量
 const WIDGET_PANEL_W = 260     // 展开面板时的窗口尺寸
 const WIDGET_PANEL_H = 320
 const RING_CX = 60
@@ -461,7 +463,8 @@ function hideAllPanels() {
 
 function elapsedSec() {
   if (!runningEntry) return 0
-  return Math.max(0, (Date.now() - new Date(runningEntry.start_time).getTime()) / 1000)
+  // 取整：避免浮点秒（如 5.343000000000001）流进累计值与界面
+  return Math.max(0, Math.floor((Date.now() - new Date(runningEntry.start_time).getTime()) / 1000))
 }
 
 /* 今日累计统计（end_time 非空的记录按分类聚合 + 每分类最近一条标题） */
@@ -477,7 +480,7 @@ async function refreshTodayStats() {
   const byCat = {}, latest = {}
   ;(data || []).forEach((e) => {
     const k = e.category_id || 'none'
-    byCat[k] = (byCat[k] || 0) + (e.duration_sec || 0)
+    byCat[k] = (byCat[k] || 0) + Math.floor(e.duration_sec || 0)   // 整秒累积
     if (!latest[k]) latest[k] = (e.title || '').trim()
   })
   todayStats = { day: dayKey(new Date()), byCat, latest }
