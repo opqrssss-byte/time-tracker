@@ -2,5 +2,6 @@ node_modules/
 dist/
 .workbuddy/
 .playwright-cli/
+.review/
 *.log
 cognitive-qa.zip
