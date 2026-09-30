@@ -62,6 +62,8 @@ playwright-cli close
 `tools/widget-selftest.js` 会断言：滚轮选中 / 主读数不被顶掉 / 停顿自动确认 / 切换 / 循环回绕 /
 同分类不误停 / Esc 取消 / 面板禁用滚轮 / 内联错误 / 元素守恒。**改组件后跑一遍再交付。**
 
+> 这条路径已被验证：用 GitHub 上的**全新克隆**起服务跑过一次，21 项全通过（2026-09-30）。
+
 **模拟 Electron 壳**（浏览器里验证穿透/拖动等壳行为）：用 `playwright run-code` + `addInitScript`
 注入一个假的 `window.electronAPI`，把 IPC 调用记进 `window.__ipc` 再断言 —— 示例见 `HANDOFF.md` §7.1 末尾。
 
