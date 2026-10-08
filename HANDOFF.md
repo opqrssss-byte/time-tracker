@@ -99,7 +99,12 @@ time_entries(id, owner_id, title DEFAULT '', category_id→categories ON DELETE 
 - **只改 web/ → 不用重打 exe**（组件加载线上代码）；**改了 desktop/（壳）→ 必须重打 exe**
 - ⚠️ **发布前确认 `.workbuddy/applications.yaml` 存在且含 `wbapp_Nv3mR6jZnOsFxEs3wbZrvd`**（已入库，用于把目录绑定到同一应用）。缺了它，工具可能把目录当新应用 → **换掉分享链接、云登录 Origin 失配**（登录只在固定域名可用）
 - ⚠️ `.wbapp_Nv3mR6jZnOsFxEs3wbZrvd.genie` 里的 `localDir` 是**本机绝对路径**；换机器后若发布/注册报目录不匹配，把它改成新机的 web 目录
-- 截至 2026-09-30 状态：线上仍是 v1.0 旧页面（多次发布被平台拒绝：`暂时无法连接原发布环境`），待恢复后重发
+- 截至 2026-10-08 状态：线上仍是 v1.0（响应头 `Last-Modified: 2026-09-28`）。**根因已定位为账号/绑定问题**，不是代码问题：
+  - `workbuddy_cloud_service` inspect → `activated: false`（应用只在本地清单，云服务未绑定）
+  - activate(reuse) → `18302: application wbapp_Nv3m... does not belong to caller`（**当前登录账号不拥有该应用**）
+  - 因此 `sites_deploy` 报「暂时无法连接原发布环境」并主动中止（避免换分享链接）
+  - 排查动作：确认当前 WorkBuddy 账号是否 9/28 发布成功时所用的那个（公司机/家用机账号可能不同）；切回原账号即可发布，链接与云登录域都不变
+  - ⚠️ **不要用"新建应用"绕过**：新应用会换域名，而云登录是精确 Origin 匹配 → 登录直接失效
 
 ### 6.2 打包桌面 exe
 完整排障流程已沉淀为技能 `~/.workbuddy/skills/electron-builder-china/SKILL.md`，要点：
