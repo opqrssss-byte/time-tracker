@@ -244,9 +244,9 @@
 
 | 文件 | 内容 |
 |---|---|
-| `web/index.html` | `#view-widget`：`#widget-plate`（环形 + 中心 + 「+」）、三个 `.widget-panel`、登录盘 |
-| `web/app.js` | `widgetSectors()` 角度分配 · `renderRing()` 环形渲染 · `renderCenter()` 三态读数 · `setHover/clearHover` · `onSectorClick` · `openPanel/closePanel` · 新增分类与全部分类面板 |
-| `web/style.css` | `body.widget-mode` token 块 + 全组件样式（L263 起） |
+| `site/index.html` | `#view-widget`：`#widget-plate`（环形 + 中心 + 「+」）、三个 `.widget-panel`、登录盘 |
+| `site/app.js` | `widgetSectors()` 角度分配 · `renderRing()` 环形渲染 · `renderCenter()` 三态读数 · `setHover/clearHover` · `onSectorClick` · `openPanel/closePanel` · 新增分类与全部分类面板 |
+| `site/style.css` | `body.widget-mode` token 块 + 全组件样式（L263 起） |
 | `desktop/main.js` | **固定窗口 260×380**（运行期不 setSize；`FIXED_WINDOW` 门闩）· 点击穿透/拖动/右键菜单 IPC · 加载地址三档优先级 · `WIDGET_URL` 环境变量覆盖 |
 | `desktop/preload.js` | `resizeTo(w,h)` · `onAddCat(cb)` |
 
@@ -266,12 +266,12 @@ python -m http.server 8899 --directory web
 ```bash
 python -m http.server 8899          # 在仓库根目录执行
 # 组件外观与交互（用样例数据，不连云端、不依赖发布）：
-#   http://localhost:8899/web/index.html?widget=1&demo=1
+#   http://localhost:8899/site/index.html?widget=1&demo=1
 ```
 
 真实悬浮窗（需按 `desktop/PACKAGING.md` 打包）：
 ```bash
-WIDGET_URL="http://127.0.0.1:8899/web/index.html?widget=1&demo=1" \
+WIDGET_URL="http://127.0.0.1:8899/site/index.html?widget=1&demo=1" \
   ./desktop/dist/win-unpacked/时间追踪.exe --user-data-dir="$LOCALAPPDATA/Temp/tt-widget-preview"
 ```
 

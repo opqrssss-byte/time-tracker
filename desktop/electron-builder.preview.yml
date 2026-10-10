@@ -16,7 +16,7 @@ files:
   - "!builder.log"
   - "!preview.log"
 extraResources:
-  - from: ../web
+  - from: ../site
     to: web
     filter:
       - "**/*"

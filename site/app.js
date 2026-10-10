@@ -1,7 +1,7 @@
 /* ========== 初始化云客户端（publicConfig，安全可前置） ========== */
 const cloud = WorkBuddyCloud.createWorkBuddyCloud({
   endpoint: 'https://mp-api.app.workbuddy.host',
-  publishableKey: 'wbpk_Nv3mR6jZnOsFxEs3wbZrvd_Hw3G3bU9x7kabAo23YK62qBAxnFk3KYL',
+  publishableKey: 'wbpk_aEuqo04CtucnCnaaQ8i9oU_KX9epFWbkdZikmsR6fpdEl35UhKMFiAv',
 })
 
 /* ========== 运行模式 ========== */

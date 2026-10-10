@@ -34,14 +34,14 @@ cd desktop && npm install        # electron + electron-builder（打包细节见
 ```bash
 # ① 完整版网页（计时/记录/统计/设置）—— 在**仓库根目录**起服务
 python -m http.server 8899
-#   → 完整版：http://localhost:8899/web/index.html
+#   → 完整版：http://localhost:8899/site/index.html
 #   注意：云登录只在「已发布域名」可用（服务端精确 Origin 匹配），localhost 上只能看静态界面
 
 # ② 组件外观与交互（推荐！不依赖发布、不连云端，用样例数据）
-#   → http://localhost:8899/web/index.html?widget=1&demo=1
+#   → http://localhost:8899/site/index.html?widget=1&demo=1
 
 # ③ 真实悬浮窗（需要 exe；产物不入库，先按 desktop/PACKAGING.md 打包）
-WIDGET_URL="http://127.0.0.1:8899/web/index.html?widget=1&demo=1" \
+WIDGET_URL="http://127.0.0.1:8899/site/index.html?widget=1&demo=1" \
   ./desktop/dist/win-unpacked/时间追踪.exe --user-data-dir="$LOCALAPPDATA/Temp/tt-widget-preview"
 ```
 
@@ -53,7 +53,7 @@ WIDGET_URL="http://127.0.0.1:8899/web/index.html?widget=1&demo=1" \
 
 ```bash
 python -m http.server 8899      # 在仓库根目录执行（脚本在 tools/，服务必须挂在仓库根）
-playwright-cli open "http://localhost:8899/web/index.html?widget=1&demo=1"   # 终端 2（需 playwright）
+playwright-cli open "http://localhost:8899/site/index.html?widget=1&demo=1"   # 终端 2（需 playwright）
 playwright-cli resize 260 380   # 必须用真实窗口尺寸，否则布局类断言无意义
 playwright-cli eval "fetch('/tools/widget-selftest.js').then(r=>r.text()).then(t=>eval(t))"
 playwright-cli close
@@ -69,16 +69,16 @@ playwright-cli close
 
 ## 4. 发布上线（覆盖性操作，**必须先问用户**）
 
-1. 用内置工具 `workbuddy_sites_deploy`：`directory=<仓库>/web`、`appName=时间追踪`、`domainPrefix=time-tracker`、`miniProgramRequested: true`、`entryHtml=index.html`、`userAskedToPublish: true`（**仅当用户本轮明确要求发布时才传**）
-2. ⚠️ **发布前先确认 `.workbuddy/applications.yaml` 存在且含 `wbapp_Nv3mR6jZnOsFxEs3wbZrvd`**（该文件已入库）。
-   缺了它，发布工具可能把目录当成新应用 → **换掉分享链接、云登录 Origin 失配**（登录只在固定域名可用）
-3. 链接固定 `https://time-tracker-91208.app.workbuddy.host/`；发布 = 覆盖线上
+1. 用内置工具 `workbuddy_sites_deploy`：`directory=<仓库>/site`、`appName=时间追踪`、`domainPrefix=time-tracker`、`entryHtml=index.html`、`miniProgramRequested: true`、`userAskedToPublish: true`（**仅当用户本轮明确要求发布时才传**）
+2. 当前应用 `wbapp_aEuqo04CtucnCnaaQ8i9oU`（2026-10-10 在现账号下新建），线上链接 `https://time-tracker-33431.app.workbuddy.host/`；发布 = 覆盖线上
+3. ⚠️ **目录必须用 `site/`**：平台按目录路径解析发布目标，`web/` 曾被登记给旧应用（传 `appId` 也改不了）→ 用 `web/` 发布永远失败。细则与历史见 `HANDOFF.md` §6.1
+4. 发布前核对 `.workbuddy/applications.yaml`（locator 应为上面那个 appId）与 `site/app.js` 的 `publishableKey`（须与该应用 publicConfig 一致）
 
 ## 5. 克隆后必然丢失的东西（及恢复方式）
 
 | 丢失项 | 影响 | 怎么办 |
 |---|---|---|
-| Google 服务账号私钥 + Doc ID（只存 localStorage，**故意不入库**） | NotebookLM 同步不可用 | 按 `web/setup-google.html` 五步重配（约 10 分钟），或从旧机导出 localStorage |
+| Google 服务账号私钥 + Doc ID（只存 localStorage，**故意不入库**） | NotebookLM 同步不可用 | 按 `site/setup-google.html` 五步重配（约 10 分钟），或从旧机导出 localStorage |
 | 云登录态（localStorage / Electron `persist:timetracker` 分区） | 组件与网页显示未登录 | 邮箱验证码重新登录（首次需设密码） |
 | Git 凭据（GCM） | `git push` 需授权 | 首次推送时在弹窗里浏览器授权一次 |
 | winCodeSign 构建缓存 | 打包报符号链接错误 | 按 `desktop/PACKAGING.md` 坑 2 预置 |
@@ -87,7 +87,7 @@ playwright-cli close
 
 ## 6. 已知的非可复现项（接手时留意）
 
-- `web/index.html` 的云 SDK 走 CDN 浮动版本 `@tencent-ai/workbuddy-cloud-sdk@dev`（官方要求，勿擅自固定）
+- `site/index.html` 的云 SDK 走 CDN 浮动版本 `@tencent-ai/workbuddy-cloud-sdk@dev`（官方要求，勿擅自固定）
 - 其余 CDN 均为固定版本：`echarts@5.5.1`、`xlsx@0.18.5`、`jsrsasign@11.1.0`
 - 小程序依赖需在**微信开发者工具里执行「工具 → 构建 npm」**（`miniprogram/utils/cloud.js` 用 SDK 的 `/miniprogram` 子路径 + 诊断适配器）
 

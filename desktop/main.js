@@ -8,11 +8,11 @@ const path = require('path')
 //   3. 线上正式地址
 const LOCAL_DEMO = path.join(process.resourcesPath || '', 'web', 'index.html')
 const IS_PREVIEW = !process.env.WIDGET_URL && app.isPackaged && fs.existsSync(LOCAL_DEMO)
-const WIDGET_URL = process.env.WIDGET_URL || 'https://time-tracker-91208.app.workbuddy.host/?widget=1'
+const WIDGET_URL = process.env.WIDGET_URL || 'https://time-tracker-33431.app.workbuddy.host/?widget=1'
 
 // 预览版与正式版并存：预览版用独立的 userData，避免单实例锁互相顶掉
 if (IS_PREVIEW) app.setPath('userData', path.join(app.getPath('temp'), 'tt-widget-preview'))
-const FULL_URL = 'https://time-tracker-91208.app.workbuddy.host/'
+const FULL_URL = 'https://time-tracker-33431.app.workbuddy.host/'
 /* 固定窗口尺寸：圆盘 + 面板一次到位，**运行期不再 setSize**。
    原因：Windows 上透明窗口程序化改尺寸会让 backing store 只重绘变化区域，
    留下竖直缝 / 顶部缺块残影（2026-09-30 用户截图实测）。多出的透明区域靠点击穿透放行，无副作用。 */

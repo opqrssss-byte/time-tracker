@@ -1,7 +1,7 @@
 # 时间追踪项目 · Agent 交接文档
 
 > 版本：**v1.1.0**（2026-09-30 存档；v1.0.0 = 初版，v1.1.0 = 桌面组件重构）｜ 用途：交给任何 agent 即可接手本项目的需求理解、开发与运维
-> 仓库：https://github.com/opqrssss-byte/time-tracker ｜ 线上：https://time-tracker-91208.app.workbuddy.host/
+> 仓库：https://github.com/opqrssss-byte/time-tracker ｜ 线上：https://time-tracker-33431.app.workbuddy.host/
 
 > **新环境/新机器请先读 [`docs/SETUP-NEW-MACHINE.md`](docs/SETUP-NEW-MACHINE.md)**（环境准备 → 本地跑起来 → 改完怎么验证 → 发布与凭据恢复），再回来看本文件。
 > 要改桌面组件，另读 [`DESIGN.md`](DESIGN.md)；要打包 exe，读 [`desktop/PACKAGING.md`](desktop/PACKAGING.md)。
@@ -40,18 +40,18 @@
 ```
 桌面悬浮组件(Electron·desktop/) ─┐
 微信小程序(miniprogram/)        ├─→ WorkBuddy 云后端 ─→ GSync 同步引擎 ─→ Google Doc ─→ NotebookLM(Source)
-网页版(web/·已上线)             ┘   (云数据库+邮箱认证)    (web/gsync.js)     《时间日志》
+网页版(site/·已上线)             ┘   (云数据库+邮箱认证)    (site/gsync.js)     《时间日志》
 ```
 
 - **云后端**：WorkBuddy 云服务（对标 Supabase）。应用 ID `wbapp_Nv3mR6jZnOsFxEs3wbZrvd`（**appType=miniprogram，创建时写死不可改**），endpoint 固定网关 `https://mp-api.app.workbuddy.host`
 - **三端共用同一份 publicConfig**（endpoint + publishableKey），统一**邮箱验证码登录**（绝不做微信登录——会产生不同 uid 导致数据分裂，平台无账号绑定能力）
 - **计时机制**：状态存云端，`时长 = now − start_time`；`end_time IS NULL` 即"正在计时"；前端 setInterval 只刷新显示；多端同步靠 30s 轮询（SDK 无推送）
 - **同步引擎**：GCP 服务账号自签 JWT（jsrsasign RS256）→ `oauth2.googleapis.com/token` 换 access_token → Docs API **全量重写**（幂等，断档自愈，无需增量队列）
-- **桌面组件**：Electron 无边框置顶悬浮窗（**固定 260×380，运行期绝不 setSize**），`loadURL(线上网页?widget=1)`，UI/逻辑全在 web/（与网页零重复）；`persist:timetracker` 分区持久化登录态
+- **桌面组件**：Electron 无边框置顶悬浮窗（**固定 260×380，运行期绝不 setSize**），`loadURL(线上网页?widget=1)`，UI/逻辑全在 site/（与网页零重复）；`persist:timetracker` 分区持久化登录态
   - 组件形态是**圆形玻璃盘 + 环形色块**（不是胶囊了），设计系统见 `DESIGN.md`
   - 交互：**滚轮沿环移动选中 → 停顿 0.9s 自动确认（换标签）/ 点击立即确认**（仿三星旋转表圈）；点扇区＝停止（临时妥协）；右键菜单＝完整版/新增分类/开机自启/退出
   - 壳能力（新 exe 才有，页面用 `electronAPI.fixedSize/dragStart/ignoreMouse` 探测）：**点击穿透**（透明区不挡桌面点击）、**任意位置拖动**、固定尺寸、右键菜单「新增分类」
-  - 预览版：`desktop/electron-builder.preview.yml` → `dist/时间追踪-本地预览.exe`，把 web/ 打进包，**双击即看组件（样例数据、不连云端）**，无需线上发布
+  - 预览版：`desktop/electron-builder.preview.yml` → `dist/时间追踪-本地预览.exe`，把 site/ 打进包，**双击即看组件（样例数据、不连云端）**，无需线上发布
 
 ## 3. 数据库结构（云数据库，owner-only RLS）
 
@@ -65,16 +65,19 @@ time_entries(id, owner_id, title DEFAULT '', category_id→categories ON DELETE 
 ```
 两表各 4 条 owner-only policy（SELECT/UPDATE/DELETE `USING (owner_id=auth.uid())`，INSERT `WITH CHECK`，UPDATE 两者都要），GRANT 给 `authenticated, anon`。客户端**永不传 owner_id**。
 
+> 2026-10-10 在新应用环境按同一结构重建（`categories` / `time_entries` 均 `id uuid` 主键、`owner_id TEXT DEFAULT auth.uid()`、
+> `sort_order`/`duration_sec` 为 integer、时间列为 timestamptz）。**注意 `owner_id` 必须是 `TEXT`**（`auth.uid()` 返回文本，声明成 uuid 会建表失败）。
+
 ## 4. 目录与关键文件
 
 | 路径 | 内容 |
 |---|---|
-| `web/index.html` `app.js` `style.css` | 网页版全部（计时/记录/统计/设置/`?widget=1` 圆形组件模式/快速标签/待补充筛选/`?widget=1&demo=1` 演示模式） |
+| `site/index.html` `app.js` `style.css` | 网页版全部（计时/记录/统计/设置/`?widget=1` 圆形组件模式/快速标签/待补充筛选/`?widget=1&demo=1` 演示模式） |
 | **`DESIGN.md`** | **桌面组件的设计系统文档**（token/几何/交互规格/Do-Don't/踩坑记录）——改组件前先读它 |
-| `web/gsync.js` | Google Docs 同步引擎 + `diagnose()` 四步自检 |
-| `web/setup-google.html` | 用户一次性 Google 配置引导（5 步） |
+| `site/gsync.js` | Google Docs 同步引擎 + `diagnose()` 四步自检 |
+| `site/setup-google.html` | 用户一次性 Google 配置引导（5 步） |
 | `desktop/main.js` `preload.js` `package.json` | Electron 壳（窗口/穿透/拖动/菜单 IPC + 加载地址三档优先级） |
-| `desktop/electron-builder.preview.yml` | 预览版打包配置（把 web/ 打进包，供离线试组件） |
+| `desktop/electron-builder.preview.yml` | 预览版打包配置（把 site/ 打进包，供离线试组件） |
 | `desktop/gen-icon.js` | 纯 Node 生成 icon.ico（icon.ico 是二进制，可用它重新生成） |
 | `website` 相关 | `miniprogram/` 原生小程序：login/timer/history/settings 四页 + utils/cloud.js（SDK `/miniprogram` 子路径 + 诊断适配器） |
 | `.wbapp_*.genie` | WorkBuddy 应用注册标记（勿删；`entryHtml: index.html`，`localDir` 为本机绝对路径，换机需改） |
@@ -91,20 +94,21 @@ time_entries(id, owner_id, title DEFAULT '', category_id→categories ON DELETE 
 6. **组件页面在圆外完全透明**（`html`/`body`/`#view-widget` 背景均为 `rgba(0,0,0,0)`，用 `elementFromPoint` 逐层验过）——看到"方形底色/方形阴影"一律先查窗口层与提示条，不要怀疑页面背景
 7. **Electron 透明窗口的透明区域不会穿透点击**（官方明确限制）→ 必须用 `setIgnoreMouseEvents` 动态开关，见 `DESIGN.md` §4.1
 8. **透明窗口 programmatic setSize 会留残影**（Windows）→ 组件已改为固定尺寸，见 `DESIGN.md` §4
+9. **发布目标由「目录路径」决定，不是由 `appId` 或 `.genie` 决定**（2026-10-10 实测）：`web/` 这个路径被登记给旧应用后，无论怎么传 `appId`／改 `.genie` 的 localDir，`sites_deploy` 都解析回旧应用并报「无法连接原发布环境」。换目录名（`web/` → `site/`）是唯一解 → 已落地
+10. **`workbuddy_cloud_service` 的 `activate` 是幂等的**（复用同一应用时返回 `reusedExisting: true`，不重复计费）；再次调用可刷新"应用↔目录"绑定。**账号不拥有某应用时任何云端调用都返回 `18302 does not belong to caller`**（连只读的 db_list_tables 也一样）
 
 ## 6. 运维操作手册
 
-### 6.1 发布网页（改完 web/ 必做）
-用内置工具 `workbuddy_sites_deploy`（directory=`<仓库>/web`，appName=时间追踪，domainPrefix=time-tracker，`miniProgramRequested: true`，`entryHtml: index.html`）。**发布=覆盖线上**，需用户当次确认。链接固定 `https://time-tracker-91208.app.workbuddy.host/`。
-- **只改 web/ → 不用重打 exe**（组件加载线上代码）；**改了 desktop/（壳）→ 必须重打 exe**
-- ⚠️ **发布前确认 `.workbuddy/applications.yaml` 存在且含 `wbapp_Nv3mR6jZnOsFxEs3wbZrvd`**（已入库，用于把目录绑定到同一应用）。缺了它，工具可能把目录当新应用 → **换掉分享链接、云登录 Origin 失配**（登录只在固定域名可用）
-- ⚠️ `.wbapp_Nv3mR6jZnOsFxEs3wbZrvd.genie` 里的 `localDir` 是**本机绝对路径**；换机器后若发布/注册报目录不匹配，把它改成新机的 web 目录
-- 截至 2026-10-08 状态：线上仍是 v1.0（响应头 `Last-Modified: 2026-09-28`）。**根因已定位为账号/绑定问题**，不是代码问题：
-  - `workbuddy_cloud_service` inspect → `activated: false`（应用只在本地清单，云服务未绑定）
-  - activate(reuse) → `18302: application wbapp_Nv3m... does not belong to caller`（**当前登录账号不拥有该应用**）
-  - 因此 `sites_deploy` 报「暂时无法连接原发布环境」并主动中止（避免换分享链接）
-  - 排查动作：确认当前 WorkBuddy 账号是否 9/28 发布成功时所用的那个（公司机/家用机账号可能不同）；切回原账号即可发布，链接与云登录域都不变
-  - ⚠️ **不要用"新建应用"绕过**：新应用会换域名，而云登录是精确 Origin 匹配 → 登录直接失效
+### 6.1 发布网页（改完 site/ 必做）
+用内置工具 `workbuddy_sites_deploy`（directory=`<仓库>/site`，appName=时间追踪，domainPrefix=time-tracker，`entryHtml: index.html`）。**发布=覆盖线上**，需用户当次确认。
+
+- **当前应用**：`wbapp_aEuqo04CtucnCnaaQ8i9oU`（2026-10-10 在现账号下新建）；**线上链接** `https://time-tracker-33431.app.workbuddy.host/`
+- **⚠️ 发布目录必须是 `site/`**：平台按**目录路径**解析发布目标，`web/` 这个路径曾被登记给旧应用，而传 `appId`／改 `.genie` 都改变不了目标（2026-10-10 实测）→ 从 `web/` 发布永远报「无法连接原发布环境」。故当日把网页目录由 `web/` 改名为 **`site/`**，并把所有文档/打包配置同步过去。**不要把目录名改回 `web/`，也不要再换别的名字**
+- 发布前核对：`.workbuddy/applications.yaml` 的 locator = `wbapp_aEuqo04CtucnCnaaQ8i9oU`；`.wbapp_aEuqo04CtucnCnaaQ8i9oU.genie` 的 `localDir` 指向 `…/site`
+- **密钥一致性**：`site/app.js` 与 `miniprogram/utils/cloud.js` 的 `publishableKey` 必须等于当前应用的 publicConfig（换应用时两处同步改，否则被 Origin 校验拒绝）
+- **只改 site/ → 不用重打 exe**；**改了 desktop/（含域名）→ 必须重打 exe**
+- （历史留档）2026-09-30 ~ 10-08 长期发不出布：根因是旧应用归属**另一个无积分账号**（`18302 does not belong to caller`），当前账号既发布不了也读不到其数据；处理方式 = 删掉本地清单里的旧条目 → 在本账号新建应用 → 重建数据库 → 换密钥与域名。旧应用与旧链接 `time-tracker-91208` **保持原样**（继续服务 v1.0），未做 unpublish
+- ⚠️ 遇到"无法连接原发布环境"时：先查**目录路径**是否被登记给别的应用（这是最常见原因），不要急着新建应用（换域名 = 云登录 Origin 失配）
 
 ### 6.2 打包桌面 exe
 完整排障流程已沉淀为技能 `~/.workbuddy/skills/electron-builder-china/SKILL.md`，要点：
@@ -112,7 +116,7 @@ time_entries(id, owner_id, title DEFAULT '', category_id→categories ON DELETE 
 export ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
 export ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder-binaries/"
 cd desktop && npx electron-builder --win portable                 # 正式版 → dist/时间追踪-桌面组件.exe
-cd desktop && npx electron-builder --win portable --config electron-builder.preview.yml   # 预览版（含 web/ 副本）
+cd desktop && npx electron-builder --win portable --config electron-builder.preview.yml   # 预览版（含 site/ 副本）
 ```
 **产物文件锁**：若用户正开着 exe，electron-builder 会报 `output file is locked for writing ... waiting for unlock` 并**无限等待**。判断是否被占用：`mv A B && mv B A`（能改名=已解锁）。让用户先关闭程序再打。
 - winCodeSign 已手工预置到 `%LOCALAPPDATA%/electron-builder/Cache/winCodeSign/winCodeSign-2.6.0`（符号链接权限问题，用 `7za x -snl` 解的）
