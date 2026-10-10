@@ -12,7 +12,8 @@ page {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
+  height: 100vh;             /* 固定高度：内容不溢出，拖动时页面就不会回弹 */
+  overflow: hidden;
   box-sizing: border-box;
 }
 

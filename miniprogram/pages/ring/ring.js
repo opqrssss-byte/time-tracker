@@ -27,7 +27,7 @@ const P = {
   stepDeg: 40, jitterDeg: 1.5, maxStepsPerMove: 3,
   tapMoveTolDeg: 8, tapMaxMs: 350,
   touchPad: 16, centerHole: 34,
-  outPush: 1.35, detentDeg: 3.5, detentMs: 160,
+  outPush: 1.35, detentMs: 160,   // detentMs = 选中弧"鼓一下"的时长（不再扭整环，见 step()）
   glow: 7, ghostDeg: 4.5, maxSectors: 7,
   haptic: true,
 }
@@ -73,7 +73,7 @@ Page({
   onUnload() { this.clearTimers() },
 
   clearTimers() {
-    ;['_ticker', '_poll', '_breathe', '_a_push', '_a_detent'].forEach((k) => {
+    ;['_ticker', '_poll', '_breathe', '_a_push', '_a_kick'].forEach((k) => {
       if (this[k]) { clearInterval(this[k]); this[k] = null }
     })
   },
@@ -254,10 +254,9 @@ Page({
     ctx.lineWidth = 1.5
     ctx.stroke()
 
-    /* 环 */
+    /* 环（整环不再随档位旋转，见 step() 的注释） */
     ctx.save()
     ctx.translate(cx, cy)
-    if (this._detent) ctx.rotate(this._detent * Math.PI / 180)
 
     ctx.beginPath()
     ctx.arc(0, 0, G.R, 0, Math.PI * 2)
@@ -267,6 +266,7 @@ Page({
 
     const laid = this._layout || []
     const push = this._push == null ? 0 : this._push
+    const kick = this._kick == null ? 0 : this._kick
     const breath = this._running ? (0.74 + 0.26 * (0.5 + 0.5 * Math.sin(this._breathPhase || 0))) : 1
 
     for (let i = 0; i < laid.length; i++) {
@@ -274,7 +274,8 @@ Page({
       const focused = this._focusId === it.id
       const active = !!it.active
       let w = G.SW
-      if (focused) w = G.SW * (1 + (P.outPush - 1) * push)
+      // 选中弧：外推（持续）+ 档位鼓一下（瞬时，替代原来扭整环）
+      if (focused) w = G.SW * (1 + (P.outPush - 1) * push + 0.12 * kick)
 
       ctx.beginPath()
       ctx.arc(0, 0, G.R, rad(it.drawStart), rad(it.drawEnd))
@@ -330,18 +331,24 @@ Page({
     ctx.fillText(name, startX + dotR * 2 + gap, cy + 21 * K)
   },
 
-  /* 补间：20ms 定时器推 _push / _detent，不挂常驻 rAF */
+  /* 补间：20ms 定时器推 _push / _kick，不挂常驻 rAF（手机省电）。
+     键名统一用 "_a_" + key，和 clearTimers 保持一致。 */
   animateTo(key, to, ms) {
     const prop = '_' + key
-    if (this[prop] === to && this['_a' + key]) return
+    const slot = '_a_' + key
+    if (this[prop] === to && this[slot]) return
     const from = this[prop] == null ? 0 : this[prop]
     const t0 = Date.now()
-    if (this['_a' + key]) clearInterval(this['_a' + key])
-    this['_a' + key] = setInterval(() => {
+    if (this[slot]) clearInterval(this[slot])
+    this[slot] = setInterval(() => {
       const p = Math.min(1, (Date.now() - t0) / ms)
       this[prop] = from + (to - from) * easeOut(p)
       this.draw()
-      if (p >= 1) { clearInterval(this['_a' + key]); this['_a' + key] = null; this[prop] = to }
+      if (p >= 1) {
+        clearInterval(this[slot])
+        this[slot] = null
+        this[prop] = to
+      }
     }, 20)
   },
 
@@ -378,6 +385,13 @@ Page({
     this._pressZone = hit.zone
     this._pressHitId = hit.id
     this._pressFocusId = this._focusId || null
+    /* 触屏与滚轮的关键差别：滚轮没有起点，所以桌面那套是"从第 0 个扇区起跳"；
+       而手指是**按在哪块上就从哪块开始** —— 不这么做的话，你按住右边那块往上一拖，
+       高亮会跳到环的另一头（用户报的"选择和计时的色块不一致"就是这个）。 */
+    if ((hit.zone === 'band' || hit.zone === 'plate') && hit.id) {
+      this._pressFocusId = hit.id
+      this.setFocus(hit.id)
+    }
     this._lastAngle = hit.deg
     this._dragDeg = 0
     this._dragSign = 0
@@ -441,8 +455,10 @@ Page({
     if (!next) return
     this.setFocus(next)
     this._steps++
-    this._detent = dir * P.detentDeg
-    this.animateTo('detent', 0, P.detentMs)
+    /* 档位反馈不再扭整个环：桌面那套是模拟"摸到金属表圈的磁点"，而手机上你是直接
+       抓着环拖，环自己扭一下反而像画错了。改成选中弧自己鼓一下（不动任何几何）。 */
+    this._kick = 1
+    this.animateTo('kick', 0, P.detentMs)
     this.haptic()
   },
 
