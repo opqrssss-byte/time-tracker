@@ -21,7 +21,7 @@ npx electron-builder --win portable --config electron-builder.preview.yml # 预�
 | 产物 | 加载什么 | 用途 |
 |---|---|---|
 | `时间追踪-桌面组件.exe` | 线上页面（`WIDGET_URL`） | 正式使用；**改网页端不用重打它**，改 `desktop/` 才要 |
-| `时间追踪-本地预览.exe` | 包内 `resources/site/` 副本（`?widget=1&demo=1`） | 离线试组件外观与交互，不连云端、不依赖发布 |
+| `时间追踪-本地预览.exe` | 包内 `resources/web/` 副本（`?widget=1&sandbox=1`） | **双击即用的桌面组件**：空数据起步、可真的记录，数据只存本机、不连云端、不依赖发布；右键菜单有「清空本地记录（重来）」 |
 
 ## 四个已知坑（按出现顺序）
 
@@ -58,8 +58,10 @@ cd desktop && mv "dist/时间追踪-桌面组件.exe" dist/_p.exe && mv dist/_p.
 ## 打包相关的架构约定（改壳前必读）
 
 - **固定窗口**：`CAPSULE_W/H = 260×380`，运行期**绝不 `setSize`**（透明窗口程序化改尺寸会在 Windows 留残影，见 `DESIGN.md` §4.1）。主进程有 `FIXED_WINDOW` 门闩。
-- **加载地址三档优先级**：`WIDGET_URL` 环境变量 → 包内 `resources/site/index.html`（预览版）→ 线上地址。
-  预览版因此可用 `WIDGET_URL="http://127.0.0.1:8899/index.html?widget=1&demo=1"` 指向本地服务调试。
+- **加载地址三档优先级**：`WIDGET_URL` 环境变量 → 包内 `resources/web/index.html`（预览版，`loadFile` = `file://`）→ 线上地址。
+  预览版因此可用 `WIDGET_URL="http://127.0.0.1:8899/site/index.html?widget=1&sandbox=1"` 指向本地服务调试。
+  ⚠️ 预览版走 `file://`：沙盒的 localStorage 在 `file://` 源下**实测可用且跨 reload 保留**（2026-10-10 用同版本 Chromium 验过），
+  但**同一进程内所有 `file://` 页面共用一个源**，所以别在同一 userData 里塞别的本地页面。
 - **壳能力用能力探测而非版本号**：页面靠 `electronAPI.fixedSize / dragStart / ignoreMouse` 判断壳是否支持新能力，
   旧壳（无这些字段）自动回退到 `-webkit-app-region` 拖动与 `resize` 协议。
 - **icon**：`icon.ico` 已入库；需要重新生成时用纯 Node 脚本 `node gen-icon.js`（手画像素 → zlib 编 PNG → 包 ICO 头）。

@@ -4,7 +4,7 @@ const path = require('path')
 
 // 加载地址解析（三档优先级）：
 //   1. 环境变量 WIDGET_URL（本地开发/临时指向任意页面）
-//   2. 包内自带 web/ 副本 → 本地演示模式（预览版 exe，用样例数据、不连云端）
+//   2. 包内自带 web/ 副本 → 本地沙盒模式（预览版 exe：空数据起步、可真的记录、不连云端）
 //   3. 线上正式地址
 const LOCAL_DEMO = path.join(process.resourcesPath || '', 'web', 'index.html')
 const IS_PREVIEW = !process.env.WIDGET_URL && app.isPackaged && fs.existsSync(LOCAL_DEMO)
@@ -95,6 +95,17 @@ if (!gotLock) {
       const menu = Menu.buildFromTemplate([
         { label: '打开完整版', click: () => openFull() },
         { label: '新增分类', click: () => { if (widgetWin) widgetWin.webContents.send('widget:add-cat') } },
+        /* 预览版独有：沙盒数据只在本机，右键给一个清空入口，
+           否则用户只能去删 %TEMP%/tt-widget-preview 才能重来 */
+        ...(IS_PREVIEW ? [
+          { type: 'separator' },
+          {
+            label: '清空本地记录（重来）',
+            click: () => {
+              if (widgetWin) widgetWin.webContents.executeJavaScript('window.__sandboxReset && window.__sandboxReset()')
+            },
+          },
+        ] : []),
         { type: 'separator' },
         {
           label: '开机自启',
@@ -159,7 +170,9 @@ function createWidget() {
       if (!sawPassthroughSignal && widgetWin) widgetWin.setIgnoreMouseEvents(false)
     }, 3000)
   })
-  if (IS_PREVIEW) widgetWin.loadFile(LOCAL_DEMO, { search: 'widget=1&demo=1' })
+  /* 预览版走**沙盒**（不是 demo）：空数据起步、可真的记录，数据落本机 localStorage
+     （userData 见上方 IS_PREVIEW 分支，独立的 %TEMP%/tt-widget-preview，与正式版互不干扰） */
+  if (IS_PREVIEW) widgetWin.loadFile(LOCAL_DEMO, { search: 'widget=1&sandbox=1' })
   else widgetWin.loadURL(WIDGET_URL)
 
   widgetWin.on('moved', () => {

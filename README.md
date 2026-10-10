@@ -26,7 +26,7 @@
 
 - 三端共用同一云后端（WorkBuddy 云服务：云数据库 + 邮箱验证码认证），计时状态存云端，时长 = 当前时间 − 开始时间戳，关页面/换设备不中断
 - `site/gsync.js` 同步引擎：GCP 服务账号自签 JWT → Google Docs API，把时间日志全量写入指定 Google Doc，NotebookLM 将该 Doc 挂载为来源（Source）即可获得最新行为上下文
-- 桌面组件加载线上网页的 `?widget=1` 组件模式（UI 与逻辑零重复）；带 `&demo=1` 时用样例数据本地渲染，**不连云端、不依赖发布**，用于离线试组件
+- 桌面组件加载线上网页的 `?widget=1` 组件模式（UI 与逻辑零重复）；带 `&demo=1` 用样例数据、带 `&sandbox=1` 则空数据起步且把记录存本机 localStorage —— 两者都**不连云端、不依赖发布**，用于离线试用
 - Electron 壳提供页面拿不到的能力：点击穿透（透明区不挡桌面点击）、任意位置拖动、固定窗口尺寸；页面用 `electronAPI.fixedSize / dragStart / ignoreMouse` 能力探测，旧壳自动回退
 
 ## 本地预览（30 秒上手）
@@ -35,7 +35,11 @@
 python -m http.server 8899          # 在仓库根目录执行
 # 完整版：   http://localhost:8899/site/index.html
 # 组件外观： http://localhost:8899/site/index.html?widget=1&demo=1
+# 组件试用： http://localhost:8899/site/index.html?widget=1&sandbox=1   （可真的记录）
+# 组件舞台： http://localhost:8899/tools/widget-stage.html             （按真实尺寸 260×380 框住）
 ```
+
+想要**桌面悬浮窗**的形态：直接双击 `desktop/dist/时间追踪-本地预览.exe`（沙盒模式，双击即用、数据存本机）。
 
 ## 安全说明
 

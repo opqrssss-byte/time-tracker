@@ -273,10 +273,13 @@ python -m http.server 8899          # 在仓库根目录执行
 #   http://localhost:8899/tools/widget-stage.html
 ```
 
-真实悬浮窗（需按 `desktop/PACKAGING.md` 打包）：
+真实悬浮窗（需按 `desktop/PACKAGING.md` 打包）——**双击 `desktop/dist/时间追踪-本地预览.exe` 即可**，
+它就是桌面组件形态 + 沙盒模式（空数据起步、可真的记录），右键有「清空本地记录（重来）」。
+若要让它加载本地开发中的 site/（改完立刻生效、不必重打包）：
 ```bash
-WIDGET_URL="http://127.0.0.1:8899/site/index.html?widget=1&demo=1" \
-  ./desktop/dist/win-unpacked/时间追踪.exe --user-data-dir="$LOCALAPPDATA/Temp/tt-widget-preview"
+WIDGET_URL="http://127.0.0.1:8899/site/index.html?widget=1&sandbox=1" \
+  ./desktop/dist/win-unpacked/时间追踪-本地预览.exe
+# ⚠️ 带 WIDGET_URL 会退化成普通实例（默认 userData）→ 与正式组件抢单实例锁，先退出正式组件
 ```
 
 `?demo=1` 的约定：**仅当同时带 `widget` 参数时生效**，加载样例分类与今日数据、点击扇区只走本地状态（不写云端）、新增分类只加在内存；正式环境不带该参数，代码路径完全不走。`--user-data-dir` 用于避开与正式组件的单实例锁冲突（预览可与正式版并存）。

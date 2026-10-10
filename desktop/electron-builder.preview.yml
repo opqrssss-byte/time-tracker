@@ -1,4 +1,5 @@
-# 预览版打包配置：把 web/ 一并打进包里，双击即看新组件（样例数据、不连云端）
+# 预览版打包配置：把 site/ 一并打进包里，双击即用组件
+#   —— 走 ?widget=1&sandbox=1：空数据起步、可真的记录，数据只存本机、不连云端
 # 用法：cd desktop && npx electron-builder --win portable --config electron-builder.preview.yml
 appId: com.timetracker.widget.preview
 productName: 时间追踪-本地预览

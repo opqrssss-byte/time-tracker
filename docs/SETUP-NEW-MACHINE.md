@@ -49,9 +49,13 @@ python -m http.server 8899
 #      用这个页面看比例才对。不是产品文件，只在本地用。
 #   → http://localhost:8899/tools/widget-stage.html
 
-# ③ 真实悬浮窗（需要 exe；产物不入库，先按 desktop/PACKAGING.md 打包）
-WIDGET_URL="http://127.0.0.1:8899/site/index.html?widget=1&demo=1" \
-  ./desktop/dist/win-unpacked/时间追踪.exe --user-data-dir="$LOCALAPPDATA/Temp/tt-widget-preview"
+# ③ 真实悬浮窗：双击 desktop/dist/时间追踪-本地预览.exe
+#    —— 桌面组件形态 + 沙盒模式（空数据起步、可真的记录，数据存 %TEMP%/tt-widget-preview）
+#    —— 右键菜单有「清空本地记录（重来）」。产物不入库，换机先按 desktop/PACKAGING.md 打包
+#    想让悬浮窗加载本地开发中的 site/（不必重打包）：
+WIDGET_URL="http://127.0.0.1:8899/site/index.html?widget=1&sandbox=1" \
+  ./desktop/dist/win-unpacked/时间追踪-本地预览.exe
+#    ⚠️ 带 WIDGET_URL 就退化成普通实例（默认 userData）→ 会与正式组件抢单实例锁，先退出正式组件
 ```
 
 `?demo=1` 的约定：**仅当同时带 `widget` 参数时生效**，用样例分类与今日数据渲染，点击/滚轮只改本地状态、绝不写云端；正式环境不带该参数。

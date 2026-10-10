@@ -28,9 +28,14 @@ python -m http.server 8899          # 在仓库根目录执行
 #   http://localhost:8899/tools/widget-stage.html
 # 完整版网页（云登录只在已发布域名可用，本地只能看静态界面）：
 #   http://localhost:8899/site/index.html
-# 真实悬浮窗（可选）：
+# 真实悬浮窗（推荐，最省事）：直接双击
+#   desktop/dist/时间追踪-本地预览.exe
+#   —— 它就是桌面组件形态，走**沙盒**（空数据起步、可真的记录，数据存 %TEMP%/tt-widget-preview）
+#   —— 右键菜单有「清空本地记录（重来）」；改过 site/ 后要重打包才会带上新 UI
+# 想让悬浮窗直接加载**本地开发中的** site/（改完立刻生效、不必重打包）：
 WIDGET_URL="http://127.0.0.1:8899/site/index.html?widget=1&sandbox=1" \
-  ./desktop/dist/win-unpacked/时间追踪.exe --user-data-dir="$LOCALAPPDATA/Temp/tt-widget-preview"
+  ./desktop/dist/win-unpacked/时间追踪-本地预览.exe
+#   ⚠️ 一旦带 WIDGET_URL，就退化成普通实例（用默认 userData、会与正式组件抢单实例锁）→ 先退出正式组件
 ```
 
 **改完 UI 必须跑自测**（会拦下绝大多数回归；脚本在 `tools/widget-selftest.js`）：
