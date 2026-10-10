@@ -1,4 +1,4 @@
 {
-  "navigationBarTitleText": "环形模式",
+  "navigationStyle": "custom",
   "usingComponents": {}
 }

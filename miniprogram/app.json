@@ -1,23 +1,23 @@
 {
   "pages": [
-    "pages/timer/timer",
+    "pages/ring/ring",
     "pages/history/history",
     "pages/settings/settings",
-    "pages/login/login",
-    "pages/ring/ring"
+    "pages/login/login"
   ],
   "window": {
-    "navigationBarBackgroundColor": "#4F8CFF",
+    "navigationBarBackgroundColor": "#0d0d0d",
     "navigationBarTitleText": "时间追踪",
     "navigationBarTextStyle": "white",
-    "backgroundColor": "#f5f7fb"
+    "backgroundColor": "#0b0c0e"
   },
   "tabBar": {
-    "color": "#8a91a3",
-    "selectedColor": "#4F8CFF",
-    "backgroundColor": "#ffffff",
+    "color": "#6a6b6c",
+    "selectedColor": "#f4f4f6",
+    "backgroundColor": "#0d0d0d",
+    "borderStyle": "black",
     "list": [
-      { "pagePath": "pages/timer/timer", "text": "计时" },
+      { "pagePath": "pages/ring/ring", "text": "计时" },
       { "pagePath": "pages/history/history", "text": "记录" },
       { "pagePath": "pages/settings/settings", "text": "设置" }
     ]

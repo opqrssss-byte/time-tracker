@@ -16,7 +16,7 @@ Page({
   onShow() {
     // 已登录直接进入
     cloud.auth.getSession().then(({ data: session }) => {
-      if (session) wx.switchTab({ url: '/pages/timer/timer' })
+      if (session) wx.switchTab({ url: '/pages/ring/ring' })
     })
   },
 
@@ -82,7 +82,7 @@ Page({
       return
     }
     this._pending = null
-    wx.switchTab({ url: '/pages/timer/timer' })
+    wx.switchTab({ url: '/pages/ring/ring' })
   },
 
   async submitPassword() {
@@ -91,7 +91,7 @@ Page({
     this.setData({ errorMsg: '' })
     const { error } = await cloud.auth.signInWithPassword({ email, password })
     if (error) { this.setData({ errorMsg: '账号或密码错误' }); return }
-    wx.switchTab({ url: '/pages/timer/timer' })
+    wx.switchTab({ url: '/pages/ring/ring' })
   },
 
   onUnload() { if (this._timer) clearInterval(this._timer) },
