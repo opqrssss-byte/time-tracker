@@ -44,6 +44,11 @@ python -m http.server 8899
 #   → http://localhost:8899/site/index.html?widget=1&sandbox=1
 #   想清空重来：URL 加 &reset=1，或控制台执行 __sandboxReset()
 
+# ②'' 组件"舞台"（推荐给"给人看"的场合）：把组件按真实窗口尺寸 260×380 框出来，
+#      顶栏可切 沙盒 / 演示 / 清空重来。浏览器面板通常很宽，直接开组件页会孤零零缩在左上角，
+#      用这个页面看比例才对。不是产品文件，只在本地用。
+#   → http://localhost:8899/tools/widget-stage.html
+
 # ③ 真实悬浮窗（需要 exe；产物不入库，先按 desktop/PACKAGING.md 打包）
 WIDGET_URL="http://127.0.0.1:8899/site/index.html?widget=1&demo=1" \
   ./desktop/dist/win-unpacked/时间追踪.exe --user-data-dir="$LOCALAPPDATA/Temp/tt-widget-preview"

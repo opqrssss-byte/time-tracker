@@ -269,6 +269,8 @@ python -m http.server 8899          # 在仓库根目录执行
 #   http://localhost:8899/site/index.html?widget=1&demo=1
 # 沙盒：空数据起步 + 本机 localStorage 保存，可真的记起来（同样不连云端）：
 #   http://localhost:8899/site/index.html?widget=1&sandbox=1
+# 舞台：按真实窗口尺寸 260×380 框住组件（宽面板里看比例用，顶栏可切 沙盒/演示/清空）
+#   http://localhost:8899/tools/widget-stage.html
 ```
 
 真实悬浮窗（需按 `desktop/PACKAGING.md` 打包）：

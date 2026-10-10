@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>组件舞台 · 260×380 真实尺寸</title>
+<!--
+  组件"舞台"：把 ?widget=1 的组件按**真实窗口尺寸 260×380** 框出来，
+  供浏览器的内置预览面板里看/试用（面板通常很宽，直接开组件页会孤零零缩在顶部）。
+  用法：在仓库根目录起 python -m http.server 8899，打开
+        http://localhost:8899/tools/widget-stage.html
+  不是产品文件，不参与发布；组件本身仍在 site/ 里。
+-->
+<style>
+  :root {
+    --bg1: #1b1d22; --bg2: #0f1013;
+    --ink: #e8e8ea; --mute: #8b8d92; --hairline: rgba(255,255,255,.10);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background:
+      radial-gradient(900px 520px at 18% 12%, #262a33 0%, transparent 60%),
+      linear-gradient(150deg, var(--bg1), var(--bg2));
+    color: var(--ink);
+    font: 13px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px;
+  }
+  .bar { display: flex; align-items: center; gap: 6px; }
+  .bar a {
+    color: var(--mute); text-decoration: none; padding: 5px 11px;
+    border: 1px solid var(--hairline); border-radius: 999px; font-size: 12px;
+    transition: color .14s, border-color .14s, background .14s;
+  }
+  .bar a:hover { color: #fff; border-color: rgba(255,255,255,.24); background: rgba(255,255,255,.05); }
+  .bar a.on { color: #fff; border-color: rgba(255,255,255,.34); background: rgba(255,255,255,.10); }
+
+  /* 真实窗口：260×380 —— 与桌面组件同尺寸，页面在圆外完全透明，
+     所以这里必须给一块"桌面"当底，否则看不出玻璃盘的边界 */
+  .stage {
+    width: 260px; height: 380px; flex: none;
+    border: 1px dashed rgba(255,255,255,.16);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .stage iframe { display: block; width: 260px; height: 380px; border: 0; }
+
+  .hint { color: var(--mute); font-size: 12px; text-align: center; line-height: 1.7; }
+  .hint b { color: #cfd0d4; font-weight: 500; }
+  .hint kbd {
+    font: inherit; font-size: 11px; padding: 1px 5px; border-radius: 4px;
+    border: 1px solid var(--hairline); background: rgba(255,255,255,.05); color: #cfd0d4;
+  }
+</style>
+</head>
+<body>
+  <div class="bar" id="bar">
+    <a href="#" data-mode="sandbox" data-url="?widget=1&sandbox=1">沙盒（空数据）</a>
+    <a href="#" data-act="reset">清空重来</a>
+    <a href="#" data-mode="demo" data-url="?widget=1&demo=1">演示（样例数据）</a>
+  </div>
+
+  <div class="stage"><iframe id="frame" src="../site/index.html?widget=1&sandbox=1" title="时间追踪组件"></iframe></div>
+
+  <div class="hint">
+    <b>260×380，组件的真实窗口尺寸。</b>虚线内就是桌面上能看到的范围。<br>
+    滚轮 / 点击环上扇区开始计时，盘底 <kbd>+</kbd> 新增分类，点运行中的扇区停止。<br>
+    沙盒的数据只存在本机浏览器里，刷新/关掉再开都还在。
+  </div>
+
+<script>
+  const frame = document.getElementById('frame')
+  const bar = document.getElementById('bar')
+  // 同源，可直接喊 iframe 里的组件换模式 / 清空
+  bar.addEventListener('click', (e) => {
+    const a = e.target.closest('a')
+    if (!a) return
+    e.preventDefault()
+    if (a.dataset.act === 'reset') {
+      // 走组件页自己的 __sandboxReset()（清 key + 自行 reload），
+      // 避免用 ?reset=1 导航后该参数一直留在 iframe URL 上、之后每次刷新都被再清一次
+      try { frame.contentWindow.__sandboxReset() } catch (err) {}
+      return
+    }
+    if (!a.dataset.url) return
+    frame.src = '../site/index.html' + a.dataset.url
+    mark(a.dataset.mode)
+  })
+  function mark(mode) {
+    bar.querySelectorAll('a[data-mode]').forEach((a) => {
+      a.classList.toggle('on', a.dataset.mode === mode)
+    })
+  }
+  // ?mode=demo|sandbox 可直接指定初始模式（默认沙盒）
+  const want = new URLSearchParams(location.search).get('mode')
+  if (want === 'demo') frame.src = '../site/index.html?widget=1&demo=1'
+  mark(want === 'demo' ? 'demo' : 'sandbox')
+</script>
+</body>
+</html>

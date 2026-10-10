@@ -24,6 +24,8 @@ python -m http.server 8899          # 在仓库根目录执行
 # 组件实战试用（空数据起步 + 本机 localStorage 保存，可以真的记起来；不连云端）：
 #   http://localhost:8899/site/index.html?widget=1&sandbox=1
 #   清空重来：加 &reset=1 或控制台 __sandboxReset()
+# 组件"舞台"（给人看组件时用这个：按真实窗口尺寸 260×380 框出来，顶栏可切模式）：
+#   http://localhost:8899/tools/widget-stage.html
 # 完整版网页（云登录只在已发布域名可用，本地只能看静态界面）：
 #   http://localhost:8899/site/index.html
 # 真实悬浮窗（可选）：
