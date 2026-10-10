@@ -40,12 +40,20 @@ python -m http.server 8899
 # ② 组件外观与交互（推荐！不依赖发布、不连云端，用样例数据）
 #   → http://localhost:8899/site/index.html?widget=1&demo=1
 
+# ②' 组件"实战"试用：空数据起步 + 本机保存（同样不连云端），可以真的记起来
+#   → http://localhost:8899/site/index.html?widget=1&sandbox=1
+#   想清空重来：URL 加 &reset=1，或控制台执行 __sandboxReset()
+
 # ③ 真实悬浮窗（需要 exe；产物不入库，先按 desktop/PACKAGING.md 打包）
 WIDGET_URL="http://127.0.0.1:8899/site/index.html?widget=1&demo=1" \
   ./desktop/dist/win-unpacked/时间追踪.exe --user-data-dir="$LOCALAPPDATA/Temp/tt-widget-preview"
 ```
 
 `?demo=1` 的约定：**仅当同时带 `widget` 参数时生效**，用样例分类与今日数据渲染，点击/滚轮只改本地状态、绝不写云端；正式环境不带该参数。
+
+`?sandbox=1`（沙盒）与 demo 的区别：① **初始无任何记录**（只在首次种子 4 个默认分类，与正式首登一致）
+② 每次操作写 `localStorage`，刷新/重开窗口后记录与"正在计时"都还在（体感同正式版"状态存云端"）
+③ 文案不带"演示"字样 —— 用来以真实手感试用，**只是数据存本机、不连云端**。
 
 ## 3. 改完怎么验证（重要）
 
@@ -63,6 +71,16 @@ playwright-cli close
 同分类不误停 / Esc 取消 / 面板禁用滚轮 / 内联错误 / 元素守恒。**改组件后跑一遍再交付。**
 
 > 这条路径已被验证：用 GitHub 上的**全新克隆**起服务跑过一次，21 项全通过（2026-09-30）。
+
+**改到沙盒 / 本地模式时再跑一份**（空数据起步、停止+快速标签、改标签的时长迁移、面板拦点击、落盘完整性）：
+
+```bash
+playwright-cli open "http://localhost:8899/site/index.html?widget=1&sandbox=1"
+playwright-cli resize 260 380
+playwright-cli eval "fetch('/tools/sandbox-selftest.js').then(r=>r.text()).then(t=>eval(t))"
+```
+
+⚠️ 它会清掉 `tt-sandbox-v1` 再重来，跑完页面停在"有记录"状态 —— **交付给用户试用前记得清空**（`&reset=1`）。
 
 **模拟 Electron 壳**（浏览器里验证穿透/拖动等壳行为）：用 `playwright run-code` + `addInitScript`
 注入一个假的 `window.electronAPI`，把 IPC 调用记进 `window.__ipc` 再断言 —— 示例见 `HANDOFF.md` §7.1 末尾。

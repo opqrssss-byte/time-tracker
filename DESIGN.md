@@ -258,8 +258,8 @@
 
 **① 浏览器预览**（最快）
 ```bash
-python -m http.server 8899 --directory web
-# 打开 http://localhost:8899/index.html?widget=1&demo=1
+python -m http.server 8899          # 在仓库根目录执行
+# 打开 http://localhost:8899/site/index.html?widget=1&demo=1
 ```
 
 **② 桌面悬浮窗预览**（真实置顶胶囊）
@@ -267,6 +267,8 @@ python -m http.server 8899 --directory web
 python -m http.server 8899          # 在仓库根目录执行
 # 组件外观与交互（用样例数据，不连云端、不依赖发布）：
 #   http://localhost:8899/site/index.html?widget=1&demo=1
+# 沙盒：空数据起步 + 本机 localStorage 保存，可真的记起来（同样不连云端）：
+#   http://localhost:8899/site/index.html?widget=1&sandbox=1
 ```
 
 真实悬浮窗（需按 `desktop/PACKAGING.md` 打包）：
@@ -277,7 +279,9 @@ WIDGET_URL="http://127.0.0.1:8899/site/index.html?widget=1&demo=1" \
 
 `?demo=1` 的约定：**仅当同时带 `widget` 参数时生效**，加载样例分类与今日数据、点击扇区只走本地状态（不写云端）、新增分类只加在内存；正式环境不带该参数，代码路径完全不走。`--user-data-dir` 用于避开与正式组件的单实例锁冲突（预览可与正式版并存）。
 
-**改完组件务必跑自测**：`tools/widget-selftest.js`（用法见 `docs/SETUP-NEW-MACHINE.md` §3），覆盖滚轮选中/停顿确认/切换/循环/内联错误/元素守恒等 21~24 项断言。
+`?sandbox=1`（沙盒）的约定：同样**仅当同时带 `widget` 参数时生效**，但换成"全新用户"的起点 —— **零记录**（只在首次种子 4 个默认分类，与正式首登时 `loadCategories()` 的行为一致），并且**每次操作落盘到 `localStorage['tt-sandbox-v1']`**：刷新/重开窗口后分类、今日累计、"正在计时"（按 `start_time` 继续走）都还在，体感与正式版"状态存云端"一致。文案不带"演示"字样。`?widget=1&sandbox=1&reset=1` 或控制台 `__sandboxReset()` 清空重来。
+
+**改完组件务必跑自测**：`tools/widget-selftest.js`（用法见 `docs/SETUP-NEW-MACHINE.md` §3），覆盖滚轮选中/停顿确认/切换/循环/内联错误/元素守恒等 21~24 项断言；改到本地模式（`IS_LOCAL` 分支）再加跑 `tools/sandbox-selftest.js`（22 项）。
 
 ## 10. 界面截图（`docs/screenshots/`）
 

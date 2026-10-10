@@ -73,7 +73,7 @@ time_entries(id, owner_id, title DEFAULT '', category_id→categories ON DELETE 
 
 | 路径 | 内容 |
 |---|---|
-| `site/index.html` `app.js` `style.css` | 网页版全部（计时/记录/统计/设置/`?widget=1` 圆形组件模式/快速标签/待补充筛选/`?widget=1&demo=1` 演示模式） |
+| `site/index.html` `app.js` `style.css` | 网页版全部（计时/记录/统计/设置/`?widget=1` 圆形组件模式/快速标签/待补充筛选/`?widget=1&demo=1` 演示模式/`?widget=1&sandbox=1` 沙盒：空数据起步 + 本机 localStorage 保存） |
 | **`DESIGN.md`** | **桌面组件的设计系统文档**（token/几何/交互规格/Do-Don't/踩坑记录）——改组件前先读它 |
 | `site/gsync.js` | Google Docs 同步引擎 + `diagnose()` 四步自检 |
 | `site/setup-google.html` | 用户一次性 Google 配置引导（5 步） |

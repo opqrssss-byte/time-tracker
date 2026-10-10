@@ -9,6 +9,15 @@ const IS_WIDGET = new URLSearchParams(location.search).has('widget')
 /* 演示模式（?widget=1&demo=1）：本地预览组件外观与交互，用样例数据、不连云端。
    仅用于开发预览/效果确认，正式环境不带该参数。 */
 const IS_DEMO = IS_WIDGET && new URLSearchParams(location.search).has('demo')
+/* 沙盒模式（?widget=1&sandbox=1）：**空数据起步**的本地试用通道，不连云端。
+   与演示模式的区别：① 初始无任何记录（只在首次种子 4 个默认分类，与正式首登一致）
+   ② 每次操作写 localStorage，刷新/重开窗口后记录与"正在计时"都还在（真机手感）
+   ③ 文案不带"演示"字样；?widget=1&sandbox=1&reset=1 或控制台 __sandboxReset() 可清空重来 */
+const IS_SANDBOX = IS_WIDGET && !IS_DEMO && new URLSearchParams(location.search).has('sandbox')
+/* 本地模式：都不连云端（所有云端分支一律跳过） */
+const IS_LOCAL = IS_DEMO || IS_SANDBOX
+const LOCAL_SUFFIX = IS_SANDBOX ? '' : '（演示）'
+const SANDBOX_KEY = 'tt-sandbox-v1'
 const isElectron = !!(window.electronAPI && window.electronAPI.isElectron)
 if (IS_WIDGET) document.body.classList.add('widget-mode')
 if (isElectron) document.body.classList.add('electron')
@@ -390,6 +399,26 @@ $('btn-widget-login').addEventListener('click', () => {
   else location.href = location.origin + location.pathname
 })
 
+/* 沙盒持久化：只写本机（localStorage），绝不入库、不连云端 */
+function sandboxSave() {
+  if (!IS_SANDBOX) return
+  try {
+    localStorage.setItem(SANDBOX_KEY, JSON.stringify({
+      v: 1,
+      day: todayStats.day,
+      categories,
+      byCat: todayStats.byCat,
+      latest: todayStats.latest,
+      running: runningEntry,
+    }))
+  } catch (e) { /* 无痕模式 / 配额满：退化为纯内存，不影响试用 */ }
+}
+function sandboxReset() {
+  try { localStorage.removeItem(SANDBOX_KEY) } catch (e) {}
+  location.reload()
+}
+window.__sandboxReset = sandboxReset          // 控制台一行清空重来
+
 /* ---------- 演示模式：样例数据 + 本地计时，不连云端 ---------- */
 function enterDemo() {
   categories = [
@@ -416,18 +445,21 @@ function enterDemo() {
   ticker = setInterval(() => { tickRing(); renderCenter() }, 1000)
 }
 
-/* 演示模式的计时：只在本地状态里开关，方便体验点击手感 */
-function demoToggle(catId, { viaWheel = false } = {}) {
+/* 本地模式（演示 / 沙盒）的计时：只在本地状态里开关，不连云端。
+   沙盒会顺带落盘 —— 刷新后"正在计时"仍在走（与正式流程"状态存云端"的体感一致） */
+function localToggle(catId, { viaWheel = false } = {}) {
   const cid = catId === '__none__' ? null : catId
+  const prefix = IS_SANDBOX ? 'sb' : 'demo'
   if (runningEntry && runningEntry.category_id === cid) {
     if (viaWheel) return                                   // 滚轮确认 → 不误停
     const dur = elapsedSec()                               // 点击 → 停止（并弹快速标签，与正式流程一致）
+    const start = runningEntry.start_time
     runningEntry = null
     if (cid) todayStats.byCat[cid] = (todayStats.byCat[cid] || 0) + dur
     else todayStats.byCat.none = (todayStats.byCat.none || 0) + dur
     showToast(`已记录 ${fmtDurMin(Math.max(1, dur))}`)
     if (!quickTagEntry) {
-      quickTagEntry = { id: 'demo', category_id: cid, start_time: new Date().toISOString(), end_time: new Date().toISOString(), duration_sec: dur }
+      quickTagEntry = { id: prefix + '-entry', category_id: cid, start_time: start, end_time: new Date().toISOString(), duration_sec: dur }
       openQuickTag(quickTagEntry)
     }
   } else {
@@ -438,12 +470,58 @@ function demoToggle(catId, { viaWheel = false } = {}) {
       if (p.category_id) todayStats.byCat[p.category_id] = (todayStats.byCat[p.category_id] || 0) + d
       else todayStats.byCat.none = (todayStats.byCat.none || 0) + d
     }
-    runningEntry = { id: 'demo-run', title: '', category_id: cid, start_time: new Date().toISOString() }
-    showToast(wasRunning ? '已切换（演示）' : '计时开始（演示）')
+    runningEntry = { id: prefix + '-run', title: '', category_id: cid, start_time: new Date().toISOString() }
+    showToast((wasRunning ? '已切换' : '计时开始') + LOCAL_SUFFIX)
   }
   clearHover()
   renderRing()
   renderCenter()
+  sandboxSave()
+}
+
+/* ---------- 沙盒模式：无记录起步 + 本机持久化，不连云端 ---------- */
+function enterSandbox() {
+  if (new URLSearchParams(location.search).has('reset')) {
+    try { localStorage.removeItem(SANDBOX_KEY) } catch (e) {}
+  }
+  const today = dayKey(new Date())
+  let saved = null
+  try { saved = JSON.parse(localStorage.getItem(SANDBOX_KEY) || 'null') } catch (e) { saved = null }
+
+  if (saved && saved.v === 1) {
+    const sameDay = saved.day === today                   // 跨天：今日统计归零（与正式流程一致）
+    categories = Array.isArray(saved.categories) ? saved.categories : []
+    todayStats = {
+      day: today,
+      byCat: sameDay ? (saved.byCat || {}) : {},
+      latest: sameDay ? (saved.latest || {}) : {},
+    }
+    runningEntry = saved.running || null
+  } else {
+    /* 全新沙盒 = 全新用户：正式首登时 loadCategories() 会种子这 4 个分类、且库里没有任何记录 */
+    categories = DEFAULT_CATEGORIES.map((c, i) => ({ id: 'sb-c' + (i + 1), ...c }))
+    todayStats = { day: today, byCat: {}, latest: {} }
+    runningEntry = null
+  }
+
+  currentUser = { email: 'sandbox@local' }
+  $('view-login').classList.add('hidden')
+  $('view-widget').classList.remove('hidden')
+  $('widget-login').classList.add('hidden')
+  $('widget-plate').classList.remove('hidden')
+  renderRing()
+  renderCenter()
+  if (runningEntry) showToast('已恢复上次的计时（本机保存）')
+  stopTicker()                                   // 与演示模式一致：心跳交给全局 ticker，便于统一清理
+  ticker = setInterval(() => {
+    if (dayKey(new Date()) !== todayStats.day) { // 跨天：环归零（沙盒不发网络请求）
+      todayStats = { day: dayKey(new Date()), byCat: {}, latest: {} }
+      renderRing()
+      sandboxSave()
+    }
+    tickRing()
+    renderCenter()
+  }, 1000)
 }
 
 async function enterWidget() {
@@ -900,7 +978,11 @@ window.addEventListener('wheel', onWheel, { passive: false })
    viaWheel=false（点击）：与运行中分类相同 → 停止（保留既有肌肉记忆；
    产品最终形态是"无暂停的连续记录"，届时该手势会改为无操作） */
 async function applySectorAction(catId, { viaWheel = false } = {}) {
-  if (IS_DEMO) { demoToggle(catId, { viaWheel }); return }   // 演示模式：本地开关，不连云端
+  if (IS_LOCAL) {                                              // 演示 / 沙盒：本地开关，不连云端
+    if (anyPanelOpen()) return                                 // 与正式流程一致：面板打开时不响应
+    localToggle(catId, { viaWheel })
+    return
+  }
   if (!navigator.onLine) { showToast('当前离线，无法操作'); return }
   if (anyPanelOpen()) return                       // 面板打开时不响应
   const cid = catId === '__none__' ? null : catId
@@ -955,12 +1037,13 @@ function setAddError(msg) {
 async function saveWidgetCategory() {
   const name = $('widget-new-cat-name').value.trim()
   if (!name) { setAddError('请输入分类名称'); return }
-  if (IS_DEMO) {                                   // 演示模式：只加在本地
-    categories.push({ id: 'demo-c' + Date.now(), name, color: widgetSwatchColor, sort_order: categories.length + 1 })
+  if (IS_LOCAL) {                                  // 演示 / 沙盒：只加在本地
+    categories.push({ id: (IS_SANDBOX ? 'sb-c' : 'demo-c') + Date.now(), name, color: widgetSwatchColor, sort_order: categories.length + 1 })
     setAddError('')
     closeWidgetAddPanel()
-    showToast('分类已添加（演示）')
+    showToast('分类已添加' + LOCAL_SUFFIX)
     renderRing(); renderCenter()
+    sandboxSave()
     return
   }
   const maxSort = categories.reduce((m, c) => Math.max(m, c.sort_order || 0), 0)
@@ -1213,7 +1296,8 @@ function startPolling() {
 }
 function stopPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = null }
 
-window.addEventListener('focus', () => { if (currentUser) refreshRunning() })
+// 本地模式（演示 / 沙盒）绝不能走云端刷新：否则失焦再聚焦会把本地计时冲掉
+window.addEventListener('focus', () => { if (currentUser && !IS_LOCAL) refreshRunning() })
 
 $('entry-title').addEventListener('blur', () => { if (runningEntry) saveRunningEdits() })
 
@@ -1344,10 +1428,21 @@ async function applyQuickTag(categoryId) {
   const entry = quickTagEntry
   closeQuickTag()
   if (!entry || entry.category_id === categoryId) return
-  if (IS_DEMO) {                                   // 演示模式：只走本地
+  if (IS_LOCAL) {                                  // 演示 / 沙盒：只走本地
+    const from = entry.category_id
     entry.category_id = categoryId
+    // 与正式流程一致：改标签 = 这段时长换个分类重新聚合（否则环上的分布不会动）
+    if (from !== categoryId) {
+      const sec = Math.floor(entry.duration_sec || 0)
+      const fromKey = from || 'none'
+      todayStats.byCat[fromKey] = Math.max(0, (todayStats.byCat[fromKey] || 0) - sec)
+      if (!todayStats.byCat[fromKey]) delete todayStats.byCat[fromKey]   // 扣到 0 → 抹掉这条，环上不留空槽
+      if (sec > 0) todayStats.byCat[categoryId] = (todayStats.byCat[categoryId] || 0) + sec
+      renderRing(); renderCenter()
+    }
     const cat = catById(categoryId)
-    showToast(`已标记为「${cat ? cat.name : ''}」（演示）`)
+    showToast(`已标记为「${cat ? cat.name : ''}」${LOCAL_SUFFIX}`)
+    sandboxSave()
     return
   }
   const { data, error } = await cloud.database.from('time_entries')
@@ -1747,13 +1842,14 @@ $('btn-signout').addEventListener('click', async () => {
 function updateOfflineBanner() {
   $('offline-banner').classList.toggle('hidden', navigator.onLine)
 }
-window.addEventListener('online', () => { updateOfflineBanner(); refreshRunning() })
+window.addEventListener('online', () => { updateOfflineBanner(); if (!IS_LOCAL) refreshRunning() })
 window.addEventListener('offline', updateOfflineBanner)
 
 /* ========== 启动 ========== */
 ;(async function init() {
   updateOfflineBanner()
-  if (IS_DEMO) { enterDemo(); return }   // ?widget=1&demo=1：本地预览，不校验登录
+  if (IS_DEMO) { enterDemo(); return }         // ?widget=1&demo=1：样例数据预览
+  if (IS_SANDBOX) { enterSandbox(); return }   // ?widget=1&sandbox=1：空数据起步 + 本机持久化
   const { data: session, error } = await cloud.auth.getSession()
   if (error || !session) { showLogin(); return }
   currentUser = session.user || null

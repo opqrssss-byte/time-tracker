@@ -21,10 +21,13 @@
 python -m http.server 8899          # 在仓库根目录执行
 # 组件外观与交互（样例数据、不连云端）：
 #   http://localhost:8899/site/index.html?widget=1&demo=1
+# 组件实战试用（空数据起步 + 本机 localStorage 保存，可以真的记起来；不连云端）：
+#   http://localhost:8899/site/index.html?widget=1&sandbox=1
+#   清空重来：加 &reset=1 或控制台 __sandboxReset()
 # 完整版网页（云登录只在已发布域名可用，本地只能看静态界面）：
 #   http://localhost:8899/site/index.html
 # 真实悬浮窗（可选）：
-WIDGET_URL="http://127.0.0.1:8899/site/index.html?widget=1&demo=1" \
+WIDGET_URL="http://127.0.0.1:8899/site/index.html?widget=1&sandbox=1" \
   ./desktop/dist/win-unpacked/时间追踪.exe --user-data-dir="$LOCALAPPDATA/Temp/tt-widget-preview"
 ```
 
@@ -35,6 +38,9 @@ playwright-cli open "http://localhost:8899/site/index.html?widget=1&demo=1"
 playwright-cli resize 260 380            # 必须用真实窗口尺寸，否则布局类断言无意义
 playwright-cli eval "fetch('/tools/widget-selftest.js').then(r=>r.text()).then(t=>eval(t))"
 ```
+
+改到**沙盒 / 本地模式**（`app.js` 里的 `IS_LOCAL` 分支、`localToggle`、`sandboxSave`）时再跑一份
+`tools/sandbox-selftest.js`（同一页面换成 `?widget=1&sandbox=1`，22 项）。⚠️ 它会清掉本机沙盒存档再重来。
 
 想看某个状态定格（例如悬停/选中）可以手动摆：`setHover('d4')`、`clearHover()`、轮 `wheel` 事件见脚本写法；
 要验证壳行为（点击穿透/拖动），用 `playwright run-code` + `addInitScript` 注入 mock `electronAPI`（写法见 `HANDOFF.md` §7.1 末尾）。
