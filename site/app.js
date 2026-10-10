@@ -771,6 +771,8 @@ function applyRingStateClasses() {
     arc.el.classList.toggle('active', active)
     arc.el.classList.toggle('focused', focused)
     arc.el.classList.toggle('hovered', hovered)
+    // ghost 也每秒跟着数据校正一次：形状没变时不会重建 DOM，靠它兜住"幽灵↔实心"的转换
+    arc.el.classList.toggle('ghost', !!it.ghost && !active)
     arc.el.classList.toggle('dim', !!hoverCatId && !focusCatId && hoverCatId !== arc.id)
     if (active || focused) {
       // 注意：内联 filter 会盖掉 CSS 的 :hover{filter}，所以悬停提亮要自己拼进来
@@ -818,7 +820,10 @@ function renderRing() {
       cx: RING_CX, cy: RING_CX, r: RING_R, fill: 'none',
       stroke: it.color, 'stroke-width': RING_SW, 'stroke-linecap': 'round',
       'data-cat': it.id,
-      class: 'ring-seg' + (it.ghost ? ' ghost' : ''),
+      /* 正在计时的扇区**即使今日 0 秒也不算幽灵**：否则"刚开始 / 刚切换"的那一瞬间
+         它会被按轨道灰画出来，而 tickRing 只在形状变化时才重建 DOM → 这个灰会一直留着
+         （用户报过："开始第一个计时的时候，圈还是灰色的"）。见 DESIGN.md §3.2 */
+      class: 'ring-seg' + (it.ghost && !it.active ? ' ghost' : ''),
     })
     rot.appendChild(c)
     ringArcs.push({ el: c, id: it.id })

@@ -40,9 +40,19 @@
   // ── 1. 开始计时 ────────────────────────────────────────────────
   await applySectorAction(id(0), { viaWheel: false })
   check('点击扇区开始计时', !!runningEntry && stateText() === '工作', { state: stateText() })
+  /* 回归：刚启动的扇区今日累计还是 0 秒，**必须立刻以分类色出现**，
+     不能因为"0 秒"被当成幽灵扇区画成灰色（2026-10-10 用户实测报的） */
+  const segOf = (i) => document.querySelector(`.ring-seg[data-cat="${id(i)}"]`)
+  check('启动即有颜色（不是幽灵灰）',
+    !!segOf(0) && !segOf(0).classList.contains('ghost') && segOf(0).getAttribute('stroke') === cat(0).color,
+    { 类: segOf(0) && segOf(0).getAttribute('class'), stroke: segOf(0) && segOf(0).getAttribute('stroke') })
+  check('启动即高亮（active）', !!segOf(0) && segOf(0).classList.contains('active'))
   // 读数每秒才刷一次（tick 在 1s 边界），轮询等它离开 0:00，避免时序假失败
   for (let i = 0; i < 25 && big() === '0:00'; i++) await sleep(200)
   check('大字在走', big() !== '00:00' && big() !== '0:00', { big: big() })
+  // 走过几个 tick 后颜色不能被"每秒校正"改回灰（幽灵→实心的转换边界）
+  check('计时中仍是分类色', !segOf(0).classList.contains('ghost') && segOf(0).getAttribute('stroke') === cat(0).color,
+    { 类: segOf(0).getAttribute('class') })
 
   // ── 2. 再点同一扇区 = 停止 + 弹快速标签栏 ──────────────────────
   await applySectorAction(id(0), { viaWheel: false })

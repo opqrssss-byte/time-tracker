@@ -47,7 +47,7 @@ playwright-cli eval "fetch('/tools/widget-selftest.js').then(r=>r.text()).then(t
 ```
 
 改到**沙盒 / 本地模式**（`app.js` 里的 `IS_LOCAL` 分支、`localToggle`、`sandboxSave`）时再跑一份
-`tools/sandbox-selftest.js`（同一页面换成 `?widget=1&sandbox=1`，22 项）。⚠️ 它会清掉本机沙盒存档再重来。
+`tools/sandbox-selftest.js`（同一页面换成 `?widget=1&sandbox=1`，25 项）。⚠️ 它会清掉本机沙盒存档再重来。
 
 想看某个状态定格（例如悬停/选中）可以手动摆：`setHover('d4')`、`clearHover()`、轮 `wheel` 事件见脚本写法；
 要验证壳行为（点击穿透/拖动），用 `playwright run-code` + `addInitScript` 注入 mock `electronAPI`（写法见 `HANDOFF.md` §7.1 末尾）。
