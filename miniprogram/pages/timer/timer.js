@@ -84,6 +84,8 @@ Page({
     this.setData({ elapsedText: fmtHMS(sec) })
   },
 
+  goRing() { wx.navigateTo({ url: '/pages/ring/ring' }) },
+
   onTitleInput(e) { this.setData({ title: e.detail.value }) },
 
   onTitleBlur() { this.saveRunningEdits() },

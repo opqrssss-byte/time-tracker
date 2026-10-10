@@ -1,0 +1,45 @@
+<!--
+  环形模式：拖环旋转 + 松手确认（没有"停止"）
+  环画在 canvas 上（小程序没有 SVG）；环心读数与环下候选条用 WXML 叠，
+  因为文字交给 WXML 更清晰（字重、省略号、随系统字体）。
+  触摸事件全部挂在 canvas 上：touchmove 用 catch 才会吞掉页面滚动。
+-->
+<view class="ring-page">
+
+  <view class="stage" style="width:{{platePx}}px;height:{{platePx}}px">
+    <view class="plate"></view>
+
+    <canvas type="2d" id="ring" class="ring-canvas"
+      style="width:{{canvasPx}}px;height:{{canvasPx}}px;left:{{padPx}}px;top:{{padPx}}px"
+      disable-scroll="{{true}}"
+      bindtouchstart="onTouchStart"
+      catchtouchmove="onTouchMove"
+      bindtouchend="onTouchEnd"
+      bindtouchcancel="onTouchCancel"></canvas>
+
+    <!-- 主读数：永不被选中/拖动顶掉 -->
+    <view class="center">
+      <view class="c-time {{running ? '' : 'idle'}}" style="font-size:{{timeSize}}px">{{elapsedText}}</view>
+      <view class="c-state">
+        <view class="dot {{running ? 'on' : ''}}" style="background:{{stateColor}}"></view>
+        <text class="c-state-txt">{{stateText}}</text>
+      </view>
+      <view class="c-latest {{latestText ? '' : 'blank'}}">{{latestText || '　'}}</view>
+    </view>
+  </view>
+
+  <!-- 次要通道：刻意放在盘外下方，躲开拇指 -->
+  <view class="below">
+    <view class="cand {{showCand ? 'show' : ''}}">
+      <text class="cand-arrow">→</text>
+      <view class="dot" style="background:{{focusColor}}"></view>
+      <text class="cand-name">{{focusName || '　'}}</text>
+      <text class="cand-sep">·</text>
+      <text>{{focusDur}}</text>
+    </view>
+    <view class="hint {{showHint ? '' : 'hide'}}">按住圆环拖动选分类，松手即切换</view>
+  </view>
+
+  <view class="err" wx:if="{{canvasError}}">画布初始化失败：{{canvasError}}</view>
+
+</view>

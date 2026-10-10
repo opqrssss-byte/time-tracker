@@ -1,0 +1,136 @@
+/* 环形模式 · 浅色（与小程序其余页面同一套：#f5f7fb 底 / 白卡 / #4F8CFF 主色）
+   尺寸用 rpx（随屏宽等比），画布与盘的 px 尺寸由 ring.js 按屏宽算好内联注入 —— 两者等价。 */
+
+page {
+  background: #f5f7fb;
+  height: 100%;
+  overflow: hidden;          /* 拖动时页面不能跟着滚 */
+}
+
+.ring-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding-top: 22vh;
+  box-sizing: border-box;
+}
+
+/* —— 盘与画布 —— */
+.stage { position: relative; }
+.plate {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2rpx solid rgba(20, 30, 50, 0.06);
+  box-shadow: 0 20rpx 60rpx rgba(31, 41, 55, 0.09);
+}
+.ring-canvas { position: absolute; }
+
+/* —— 环心主读数 —— */
+.center {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.c-time {
+  font-size: 80rpx;
+  font-weight: 600;
+  letter-spacing: -1rpx;
+  line-height: 1.05;
+  color: #1f2430;
+}
+.c-time.idle { color: #b7bdc9; }
+.c-state {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 10rpx;
+  max-width: 300rpx;
+}
+.c-state .dot {
+  width: 16rpx; height: 16rpx;
+  border-radius: 50%;
+  margin-right: 12rpx;
+  flex: none;
+}
+.c-state .dot.on { animation: breathe 2.4s ease-in-out infinite; }
+.c-state-txt {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #454d5c;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.c-latest {
+  margin-top: 8rpx;
+  font-size: 23rpx;
+  color: #8a91a3;
+  max-width: 300rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.c-latest.blank { opacity: 0; }
+
+@keyframes breathe {
+  0%   { opacity: 1; transform: scale(1); }
+  50%  { opacity: 0.55; transform: scale(0.82); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* —— 盘下方：候选条 + 引导 —— */
+.below {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 32rpx;
+  padding: 0 48rpx;
+}
+.cand {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 60rpx;
+  padding: 0 26rpx;
+  border-radius: 999rpx;
+  background: #ffffff;
+  border: 2rpx solid rgba(20, 30, 50, 0.07);
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #1f2430;
+  white-space: nowrap;
+  visibility: hidden;        /* 占位不跳版 */
+}
+.cand.show { visibility: visible; }
+.cand-arrow { color: #8a91a3; font-weight: 400; margin-right: 10rpx; }
+.cand .dot {
+  width: 16rpx; height: 16rpx; border-radius: 50%;
+  margin-right: 12rpx; flex: none;
+}
+.cand-name { max-width: 240rpx; overflow: hidden; text-overflow: ellipsis; }
+.cand-sep { color: #8a91a3; font-weight: 400; margin: 0 10rpx; }
+
+.hint {
+  margin-top: 20rpx;
+  font-size: 25rpx;
+  color: #8a91a3;
+  text-align: center;
+  transition: opacity 160ms ease;
+}
+.hint.hide { opacity: 0; }
+
+.err {
+  margin-top: 40rpx;
+  padding: 20rpx 28rpx;
+  border-radius: 16rpx;
+  background: #fcebeb;
+  color: #a32d2d;
+  font-size: 24rpx;
+  text-align: center;
+}

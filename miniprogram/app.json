@@ -3,7 +3,8 @@
     "pages/timer/timer",
     "pages/history/history",
     "pages/settings/settings",
-    "pages/login/login"
+    "pages/login/login",
+    "pages/ring/ring"
   ],
   "window": {
     "navigationBarBackgroundColor": "#4F8CFF",

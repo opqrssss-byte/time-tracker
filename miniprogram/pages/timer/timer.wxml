@@ -1,4 +1,15 @@
 <view class="page">
+
+  <!-- 入口：环形模式（拖环旋转 + 松手确认，没有"停止"） -->
+  <view class="ring-cta" bindtap="goRing" hover-class="ring-cta-hover">
+    <view class="ring-cta-ring"></view>
+    <view class="ring-cta-body">
+      <view class="ring-cta-title">环形模式</view>
+      <view class="ring-cta-sub">拖圆环选分类，松手即切换</view>
+    </view>
+    <view class="ring-cta-go">试试 ›</view>
+  </view>
+
   <view class="timer-face">
     <view class="elapsed">{{elapsedText}}</view>
     <view wx:if="{{running}}" class="running-since">开始于 {{runningSince}} · 可在任意设备停止</view>

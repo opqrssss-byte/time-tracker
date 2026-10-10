@@ -1,5 +1,30 @@
 .page { padding: 40rpx 32rpx; }
 
+/* 环形模式入口 */
+.ring-cta {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  background: #fff;
+  border: 2rpx solid #eef1f6;
+  border-radius: 20rpx;
+  padding: 24rpx 26rpx;
+}
+.ring-cta-hover { background: #f7f9fc; }
+.ring-cta-ring {
+  width: 44rpx; height: 44rpx;
+  border-radius: 50%;
+  border: 8rpx solid #4F8CFF;
+  border-right-color: #9B6DFF;
+  border-bottom-color: #2FBF71;
+  margin-right: 22rpx;
+  flex: none;
+}
+.ring-cta-body { flex: 1; }
+.ring-cta-title { font-size: 30rpx; font-weight: 600; }
+.ring-cta-sub { font-size: 24rpx; color: #8a91a3; margin-top: 6rpx; }
+.ring-cta-go { font-size: 26rpx; color: #4F8CFF; font-weight: 500; flex: none; }
+
 .timer-face { text-align: center; margin: 48rpx 0 36rpx; }
 .elapsed {
   font-size: 110rpx;
