@@ -6,6 +6,7 @@
 
 | 你的身份 | 先读 |
 |---|---|
+| **接着上一轮继续干活** | [`docs/NEXT-SESSION.md`](docs/NEXT-SESSION.md) —— 当前状态、本地 UI 开发循环（含自测脚本）、硬约束、可选美化方向 |
 | **刚克隆仓库 / 换了台电脑** | [`docs/SETUP-NEW-MACHINE.md`](docs/SETUP-NEW-MACHINE.md) —— 环境准备、本地跑起来、改完怎么验证、发布与凭据恢复 |
 | **接手开发（AI agent 或人）** | [`HANDOFF.md`](HANDOFF.md) —— 需求定位、架构、数据库、已验证事实、运维手册、已知坑 |
 | **要改桌面组件** | [`DESIGN.md`](DESIGN.md) —— 组件设计系统（token/几何/交互规格/Do-Don't/踩坑） |

@@ -4,6 +4,7 @@
 > 仓库：https://github.com/opqrssss-byte/time-tracker ｜ 线上：https://time-tracker-33431.app.workbuddy.host/
 
 > **新环境/新机器请先读 [`docs/SETUP-NEW-MACHINE.md`](docs/SETUP-NEW-MACHINE.md)**（环境准备 → 本地跑起来 → 改完怎么验证 → 发布与凭据恢复），再回来看本文件。
+> **接着上一轮继续干活，先读 [`docs/NEXT-SESSION.md`](docs/NEXT-SESSION.md)**（当前状态、本地 UI 开发循环、硬约束、可选美化方向）。
 > 要改桌面组件，另读 [`DESIGN.md`](DESIGN.md)；要打包 exe，读 [`desktop/PACKAGING.md`](desktop/PACKAGING.md)。
 
 ---
