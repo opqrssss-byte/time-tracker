@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#f5f7fb">
+<link rel="icon" href="data:,">
+<title>时间追踪 · 手机端交互原型</title>
+<!--
+  手机端"拖环旋转 + 松手确认"交互原型
+  ---------------------------------------------------------------------------
+  跑法（在仓库根目录）：
+    python -m http.server 8899
+    http://localhost:8899/prototype/index.html
+  真机（同一 Wi-Fi）：把 localhost 换成电脑的局域网 IP，上方 viewport 已按手机适配
+
+  这不是产品文件，不参与发布；它是"交互能不能成立"的验证场，
+  也是将来搬进 miniprogram/ 的参考实现（搬迁映射见 README.md）。
+-->
+<link rel="stylesheet" href="prototype.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <div class="stage" id="stage">
+    <div class="plate"></div>
+    <canvas id="ring"></canvas>
+    <div class="center">
+      <div class="center-time idle" id="c-time">00:00</div>
+      <div class="center-state">
+        <span class="dot" id="c-dot"></span>
+        <span class="txt" id="c-state">空闲</span>
+      </div>
+      <div class="center-latest" id="c-latest"></div>
+    </div>
+  </div>
+
+  <div class="below">
+    <div class="candidate" id="cand"></div>
+    <div class="hintline" id="hint">按住圆环拖动选分类，松手即切换</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <button class="dbg-tab" id="dbgTab">手感调试</button>
+  <div class="debug" id="debug">
+    <div class="debug-head">
+      <span>手感参数 · 改完立即生效</span>
+      <button class="debug-close" id="dbgClose" aria-label="收起">收起</button>
+    </div>
+    <div class="debug-body">
+      <div id="dbgRows"></div>
+      <div class="dbg-state" id="dbgState"></div>
+      <div class="dbg-actions">
+        <button data-act="demo">样例数据</button>
+        <button data-act="empty">空数据</button>
+        <button data-act="theme">切主题</button>
+        <button data-act="reset" class="primary">重置参数</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="ring-geometry.js"></script>
+<script src="ring-canvas.js"></script>
+</body>
+</html>

@@ -26,6 +26,8 @@ python -m http.server 8899          # 在仓库根目录执行
 #   清空重来：加 &reset=1 或控制台 __sandboxReset()
 # 组件"舞台"（给人看组件时用这个：按真实窗口尺寸 260×380 框出来，顶栏可切模式）：
 #   http://localhost:8899/tools/widget-stage.html
+# 手机端交互原型（拖环旋转 + 松手确认；真机可用 局域网IP:8899 打开）：
+#   http://localhost:8899/prototype/index.html     用法/搬迁映射见 prototype/README.md
 # 完整版网页（云登录只在已发布域名可用，本地只能看静态界面）：
 #   http://localhost:8899/site/index.html
 # 真实悬浮窗（推荐，最省事）：直接双击

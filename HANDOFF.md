@@ -79,6 +79,7 @@ time_entries(id, owner_id, title DEFAULT '', category_id→categories ON DELETE 
 | `site/setup-google.html` | 用户一次性 Google 配置引导（5 步） |
 | `desktop/main.js` `preload.js` `package.json` | Electron 壳（窗口/穿透/拖动/菜单 IPC + 加载地址三档优先级） |
 | `desktop/electron-builder.preview.yml` | 预览版打包配置（把 site/ 打进包，供离线试组件） |
+| `prototype/` | **手机端交互原型**（拖环旋转 + 松手确认、无停止）：`index.html` + `ring-geometry.js`（纯几何，可搬去小程序）+ `ring-canvas.js` + `selftest.js`；搬迁映射见其 README |
 | `desktop/gen-icon.js` | 纯 Node 生成 icon.ico（icon.ico 是二进制，可用它重新生成） |
 | `website` 相关 | `miniprogram/` 原生小程序：login/timer/history/settings 四页 + utils/cloud.js（SDK `/miniprogram` 子路径 + 诊断适配器） |
 | `.wbapp_*.genie` | WorkBuddy 应用注册标记（勿删；`entryHtml: index.html`，`localDir` 为本机绝对路径，换机需改） |

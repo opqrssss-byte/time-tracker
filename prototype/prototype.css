@@ -1,0 +1,334 @@
+/* ============================================================================
+   手机端"拖环旋转"原型 · 样式
+   ----------------------------------------------------------------------------
+   搬迁到小程序时本文件 → pages/timer/timer.wxss，换算规则：
+     px → rpx：设计基准 375px 宽，小程序 750rpx = 屏宽，故 1px(375基准) = 2rpx。
+     即下面所有 px 值 ×2 写进 wxss；字号同理（40px → 80rpx）。
+   ========================================================================== */
+
+:root {
+  /* —— 浅色（默认，对齐小程序 app.wxss）—— */
+  --bg: #f5f7fb;
+  --surface: #ffffff;
+  --surface-2: #eef1f7;
+  --hairline: rgba(20, 30, 50, 0.07);
+  --hairline-strong: rgba(20, 30, 50, 0.14);
+  --ink: #1f2430;
+  --body: #454d5c;
+  --mute: #8a91a3;
+  --ash: #b7bdc9;
+  --track: rgba(20, 30, 50, 0.07);
+  --ghost: rgba(20, 30, 50, 0.11);
+  --ghost-hi: rgba(20, 30, 50, 0.22);
+  --danger: #ff5a5a;
+  /* 有理由的偏离：DESIGN.md 禁投影是因为"透明窗口会把投影裁成方形硬边"，
+     手机上没有这个约束，浅色盘需要一点点浮起感来跟页面底分开 */
+  /* 浅色下白盘压在 #f5f7fb 上几乎看不见，需要一点点投影 + 更实的发丝描边才立得住；
+     深色主题里这套会自动归零（见下） */
+  --plate-shadow: 0 10px 30px rgba(31, 41, 55, 0.09), 0 2px 5px rgba(31, 41, 55, 0.05);
+  --cand-ink: #1f2430;
+}
+
+[data-theme="dark"] {
+  --bg: #0b0c0e;
+  --surface: #131417;
+  --surface-2: #1b1d21;
+  --hairline: rgba(255, 255, 255, 0.10);
+  --hairline-strong: rgba(255, 255, 255, 0.20);
+  --ink: #f4f4f6;
+  --body: #cdcdcd;
+  --mute: #9c9c9d;
+  --ash: #6a6b6c;
+  --track: rgba(255, 255, 255, 0.07);
+  --ghost: rgba(255, 255, 255, 0.14);
+  --ghost-hi: rgba(255, 255, 255, 0.34);
+  --plate-shadow: none;
+  --cand-ink: #f4f4f6;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;             /* 拖动时页面绝不能跟着滚 */
+  overscroll-behavior: none;
+}
+
+body {
+  background: #e7eaf0;          /* 桌面浏览时留个"手机外的底色"，真机上是透明的 */
+  font: 400 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  color: var(--ink);
+  display: flex;
+  justify-content: center;
+}
+
+/* 真机铺满；桌面浏览时收成一个手机尺寸的框，方便截屏评审 */
+.app {
+  position: relative;
+  width: 100%;
+  max-width: 414px;
+  height: 100%;
+  max-height: 896px;
+  background: var(--bg);
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+@media (min-width: 520px) and (min-height: 940px) {
+  body { align-items: center; }
+  .app {
+    height: 812px;
+    border-radius: 28px;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  }
+}
+
+/* —— 圆盘舞台：canvas 与中心读数共享的定位盒 —— */
+.stage {
+  position: absolute;
+  left: 50%;
+  top: var(--ring-cy);
+  transform: translate(-50%, -50%);
+  width: var(--plate-d);
+  height: var(--plate-d);
+}
+.plate {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--plate-shadow);
+}
+/* canvas 比盘略大一圈，给选中外扩与辉光留余量 */
+#ring {
+  position: absolute;
+  left: -18px;
+  top: -18px;
+  width: calc(100% + 36px);
+  height: calc(100% + 36px);
+  touch-action: none;
+}
+
+/* —— 环心读数（主通道，永不被选中/拖动顶掉）—— */
+.center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  pointer-events: none;         /* 命中全交给 canvas */
+}
+.center-time {
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  color: var(--ink);
+  line-height: 1.05;
+  transition: color 180ms ease;
+}
+.center-time.idle { color: var(--ash); }
+.center-time.compact { font-size: 30px; }
+.center-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--body);
+  max-width: 150px;
+}
+.center-state .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ash); flex: none;
+}
+.center-state .dot.on { animation: breathe 2.4s ease-in-out infinite; }
+.center-state .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.center-latest {
+  font-size: 11.5px;
+  color: var(--mute);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.center-latest.hidden { visibility: hidden; }
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.82); }
+}
+
+/* —— 候选条（次要通道）：刻意放在盘外下方，躲开拇指 —— */
+.below {
+  position: absolute;
+  left: 0; right: 0;
+  top: var(--below-top);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0 24px;
+  pointer-events: none;
+}
+.candidate {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--cand-ink);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.candidate.show { opacity: 1; transform: translateY(0); }
+.candidate .arrow { color: var(--mute); font-weight: 400; }
+.candidate .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.candidate .dursep { color: var(--mute); font-weight: 400; }
+.hintline {
+  font-size: 12.5px;
+  color: var(--mute);
+  transition: opacity 160ms ease;
+}
+.hintline.hidden { opacity: 0; }
+
+/* —— 轻提示（无停止：同分类点击时提示"已在计时"）—— */
+.toast {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--below-top) + 78px);
+  transform: translate(-50%, 6px);
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 6px 18px rgba(31, 41, 55, 0.08);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--body);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease;
+  white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* —— 调试面板 —— */
+.debug {
+  position: absolute;
+  left: 8px; right: 8px; bottom: 8px;
+  max-height: 62%;
+  display: none;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  box-shadow: 0 -6px 28px rgba(15, 23, 42, 0.12);
+  font-size: 12px;
+  color: var(--body);
+  z-index: 9;
+  overflow: hidden;
+}
+.debug.open { display: flex; }
+.debug-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 10px 14px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--mute);
+  font-weight: 500;
+  flex: none;
+}
+.debug-close {
+  border: 1px solid var(--hairline-strong);
+  background: transparent;
+  color: var(--mute);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.debug-body { padding: 6px 14px 14px; overflow: auto; }
+.dbg-group {
+  margin: 10px 0 6px;
+  font-weight: 500;
+  color: var(--mute);
+  font-size: 11px;
+  letter-spacing: 0.4px;
+}
+.dbg-row {
+  display: grid;
+  grid-template-columns: 118px 1fr 46px;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.dbg-row label { color: var(--body); }
+.dbg-row input[type="range"] { width: 100%; accent-color: #4f8cff; }
+.dbg-row .val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--mute);
+}
+.dbg-state {
+  margin-top: 8px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  color: var(--body);
+}
+.dbg-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.dbg-actions button {
+  flex: 1 1 auto;
+  min-width: 88px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--hairline-strong);
+  background: transparent;
+  color: var(--body);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dbg-actions button:active { background: var(--surface-2); }
+.dbg-actions button.primary {
+  background: #4f8cff; border-color: #4f8cff; color: #fff; font-weight: 500;
+}
+
+/* 调试面板的开合把手（面板收起时也在） */
+.dbg-tab {
+  position: absolute;
+  right: 12px; bottom: 12px;
+  z-index: 10;
+  padding: 8px 13px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  color: var(--mute);
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(31, 41, 55, 0.07);
+}

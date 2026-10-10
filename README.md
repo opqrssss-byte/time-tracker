@@ -41,6 +41,9 @@ python -m http.server 8899          # 在仓库根目录执行
 
 想要**桌面悬浮窗**的形态：直接双击 `desktop/dist/时间追踪-本地预览.exe`（沙盒模式，双击即用、数据存本机）。
 
+想看**手机端**的交互（拖环旋转 + 松手确认，去掉"停止"）：`http://localhost:8899/prototype/index.html`
+（真机同网络可用 `局域网IP:8899` 打开；用法与"搬迁到小程序"的映射见 `prototype/README.md`）。
+
 ## 安全说明
 
 - 代码中的云 `publishableKey` 为官方设计的公开密钥，仅标识应用、不含任何权限
