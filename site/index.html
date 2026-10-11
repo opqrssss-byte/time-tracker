@@ -251,6 +251,9 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="gsync.js"></script>
+<!-- 空间模型数据层（配对码/设备令牌/rpc 数据面）。未绑定时全程 no-op，
+     与原有账号路径并存、互不干扰，可以分批切换调用点。 -->
+<script src="repo.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
