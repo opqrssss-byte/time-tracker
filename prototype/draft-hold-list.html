@@ -76,8 +76,17 @@
     padding: 0 20px 0 18px; box-sizing: border-box;
     background: rgba(255,255,255,.08);
   }
-  .addbar .plus { font-size: 19px; font-weight: 400; color: rgba(255,255,255,.62); margin-right: 9px; line-height: 1; }
-  .addbar .txt { font-size: 19px; font-weight: 600; color: rgba(255,255,255,.62); }
+  /* ＋ 用两条线画，不用「＋」字符：字符是全角、宽度还受字体回退影响，量不准 */
+  .addbar .plus { position: relative; width: 12px; height: 12px; flex: none; margin-right: 10px; }
+  .addbar .plus::before, .addbar .plus::after {
+    content: ''; position: absolute; background: rgba(255,255,255,.72); border-radius: 1px;
+  }
+  .addbar .plus::before { left: 0; top: 5px; width: 12px; height: 2px; }
+  .addbar .plus::after { left: 5px; top: 0; width: 2px; height: 12px; }
+  .addbar .txt { font-size: 19px; font-weight: 600; color: rgba(255,255,255,.72); }
+  /* 选中时同步放大（和普通行一致） */
+  .row.sel .addbar .txt { font-size: 24px; }
+  .row.sel .addbar .plus { transform: scale(1.25); }
 
   .caption { font-size: 12.5px; color: #6a6b6c; }
 
@@ -158,9 +167,22 @@
       <li>辉光：<code>0 0 22px 色·45%</code>（散光）+ <code>0 0 6px 色·70%</code>（贴边）。
           只有一层会像实心色块，没有"荧光"感</li>
       <li>未选行整条 <code>opacity .5</code>；再远的行 <code>.5→.26→0</code> 逐级淡出</li>
-      <li>「新增」条：<code>rgba(255,255,255,.05)</code> 底、灰字、与第一条同宽</li>
+      <li>「新增」条：<code>rgba(255,255,255,.085)</code> 底 + <code>.72</code> 灰字。
+          <b>和其他行守同一套长度规则</b>（它没有时长 → 落在最短那一档），
+          不再做成满宽扁条（那样和旁边长度各异的胶囊不是一个系统，显得突兀）。
+          ＋ 用两条线画，不用「＋」字符——字符是全角、宽度还受字体回退影响，量不准</li>
       <li>列表进出场 <code>200ms</code>：淡入 + 0.95→1 放大；<b>环彻底退场</b>
           （不保留半透明，否则大色块和一个幽灵环叠着会显脏）</li>
+    </ul>
+
+    <h2>交互规则</h2>
+    <ul>
+      <li>屏幕<b>任意位置</b>按下 → 列表浮出，初始选中<b>正在计时那一类</b></li>
+      <li>上下滑跟手；<b>手指滑 <code>40px</code> 走一行</b> —— 行距 76px 是视觉用的，
+          两者<b>刻意分开</b>：绑成同一个值就得滑满 76px 才换一行，分类一多非常烦</li>
+      <li>松手即提交；不足半行回弹；滑到底可选中「新增分类」</li>
+      <li>选中行变大字 + 满亮荧光；未选行降透明度、条也变暗</li>
+      <li>没有"停止"：切到别处 = 上一段结束</li>
     </ul>
 
     <h2>待你拍板</h2>
@@ -305,7 +327,14 @@
     const addBar = rowsEl.querySelector('.addbar')
     const needs = bars.map((b) => (b ? Math.ceil(b.scrollWidth) + 2 : 0))
     // 「新增」也参与同一套长度规则：它没有时长 → share=0 → 长度就落在零点 L0（最短那一档）
-    const addNeed = addBar ? Math.ceil(addBar.scrollWidth) + 2 : 0
+    // 量它的宽度时必须**按选中字号**量：它在选中时会放大，按小字号量的话选中那一刻文字会顶出去
+    let addNeed = 0
+    if (addBar) {
+      const t = addBar.querySelector('.txt')
+      if (t) t.style.fontSize = '24px'
+      addNeed = Math.ceil(addBar.scrollWidth) + 2
+      if (t) t.style.fontSize = ''
+    }
     const L0 = Math.max(60, addNeed, ...needs)
     bars.forEach((bar, i) => {
       if (!bar) return
@@ -357,11 +386,14 @@
     listEl.classList.add('show'); dimT = 1; layoutRows()
     if (e.preventDefault) e.preventDefault()
   }
+  /* 手感：手指滑动距离（DRAG_PER_ROW）与视觉行距（ROW_H）**分开**。
+     绑在一起的话得滑满 76px 才换一行，分类一多非常烦。 */
+  const DRAG_PER_ROW = 40
   function onMove(e) {
     if (down == null) return
     const sc = phone.getBoundingClientRect().height / 812
     const n = rowsEl.children.length
-    pos = Math.max(0, Math.min(n - 1, downPos + (down - pt(e).y) / sc / ROW_H))
+    pos = Math.max(0, Math.min(n - 1, downPos + (down - pt(e).y) / sc / DRAG_PER_ROW))
     layoutRows()
     if (e.preventDefault) e.preventDefault()
   }

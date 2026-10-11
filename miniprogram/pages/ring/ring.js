@@ -25,8 +25,12 @@ const SWATCH = ['#4F8CFF', '#9B6DFF', '#2FBF71', '#F2A93B', '#23B8D5', '#F06EAA'
 
 /* 视觉参数：与草稿 v3 同源，全部按屏宽 K 等比（375 宽为设计基准） */
 const V = {
-  pitch: 76, barH: 58, barSelH: 68, barMaxW: 335, padL: 18, padR: 20,
+  pitch: 76,          // 行距：视觉用（条高 58 要留呼吸）
+  dragPerRow: 40,     // 手感用：手指滑多少 px 走一行 ← 与行距**分开**
+                      //   绑在一起的话就得滑满 76px 才换一行，分类一多非常烦
+  barH: 58, barSelH: 68, barMaxW: 335, padL: 18, padR: 20,
   nameSize: 19, nameSelSize: 24, durSize: 13, durSelSize: 14,
+  plusArm: 6, plusGap: 10,      // 「新增」的 ＋ 用两条线画（不用字符：字符宽受字体回退影响，量不准）
   plateR: 121.6, ringR: 86.4, ringSW: 17.6, gapVis: 6.4, ghostDeg: 4.5, maxSectors: 7,
   dialAt: 0.40, listAt: 0.50, revealMs: 200,
 }
@@ -34,7 +38,7 @@ const T = {
   plate: '#131417', hairline: 'rgba(255,255,255,0.08)',
   track: 'rgba(255,255,255,0.06)', ghost: 'rgba(255,255,255,0.13)',
   ink: '#f4f4f6', body: '#cdcdcd', ash: '#5c5d60', danger: '#FF5A5A',
-  addFill: 'rgba(255,255,255,0.08)', addInk: 'rgba(255,255,255,0.62)',
+  addFill: 'rgba(255,255,255,0.085)', addInk: 'rgba(255,255,255,0.72)',
 }
 
 const ADD_ID = '__add__'
@@ -191,10 +195,16 @@ Page({
     return ctx.measureText(String(text)).width
   },
 
+  /* 一条记录"这行文字最少要多宽"。**一律按选中字号量**：
+     行被选中时字会从 19 放大到 24，按小字号量的话选中那一刻文字就顶出条外了
+     （「新增」那行就是这么出问题的 —— 其他行按选中字号量，只有它漏了）。 */
   needOf(r) {
     const K = this._K
     const pad = (V.padL + V.padR) * K
-    if (r.isAdd) return this.measure('＋ ' + r.name, V.nameSize * K, 600) + pad
+    if (r.isAdd) {
+      const offset = V.padL * K + V.plusArm * 2 * K + V.plusGap * K
+      return offset + this.measure(r.name, V.nameSelSize * K, 600) + V.padR * K
+    }
     const nameW = this.measure(r.name, V.nameSelSize * K, 600)
     const durW = this.measure(r.sec ? RM.fmtDurMin(r.sec) : '今天还没有', V.durSelSize * K, 500)
     return nameW + 10 * K + durW + pad
@@ -232,6 +242,16 @@ Page({
     ctx.lineTo(x + r, y + h)
     ctx.arc(x + r, y + r, r, Math.PI / 2, Math.PI * 1.5)
     ctx.closePath()
+  },
+
+  /* 「新增」的 ＋ 用两条线画：字符（U+FF0B）是全角、宽度还受字体回退影响，量不准 */
+  drawPlus(ctx, cx, cy, arm, lw) {
+    ctx.beginPath()
+    ctx.moveTo(cx - arm, cy); ctx.lineTo(cx + arm, cy)
+    ctx.moveTo(cx, cy - arm); ctx.lineTo(cx, cy + arm)
+    ctx.lineWidth = lw
+    ctx.lineCap = 'round'
+    ctx.stroke()
   },
 
   /* 环（空闲态）：盘 + 环 + 环心读数 */
@@ -341,7 +361,7 @@ Page({
       ctx.fill()
       ctx.shadowBlur = 0
 
-      // 文字嵌在条内
+      // 文字嵌在条内（起点/内距必须与 needOf() 完全一致，否则会顶出条外）
       const ink = r.isAdd ? T.addInk : (r.ghost ? 'rgba(255,255,255,0.72)' : inkFor(r.color))
       const nameSize = (isSel ? V.nameSelSize : V.nameSize) * K
       const durSize = (isSel ? V.durSelSize : V.durSize) * K
@@ -349,9 +369,12 @@ Page({
       ctx.textAlign = 'left'
       ctx.fillStyle = ink
       ctx.font = '600 ' + Math.round(nameSize) + 'px sans-serif'
-      const label = r.isAdd ? '＋ ' + r.name : r.name
-      ctx.fillText(label, x + V.padL * K, y)
-      if (!r.isAdd) {
+      if (r.isAdd) {
+        const arm = V.plusArm * K
+        this.drawPlus(ctx, x + V.padL * K + arm, y, arm, 2 * K)
+        ctx.fillText(r.name, x + V.padL * K + arm * 2 + V.plusGap * K, y)
+      } else {
+        ctx.fillText(r.name, x + V.padL * K, y)
         ctx.textAlign = 'right'
         ctx.globalAlpha = alpha * rowA * (isSel ? 0.85 : 0.5)
         ctx.font = '500 ' + Math.round(durSize) + 'px sans-serif'
@@ -402,9 +425,11 @@ Page({
     if (!this._open) return
     const p = this.pointOf(e)
     if (!p) return
-    const pitch = V.pitch * this._K
+    /* 用 dragPerRow（手感）而不是 pitch（视觉）来换算：
+       两个值分开之后，想调"滑多少换一行"就不必动视觉，反之亦然 */
+    const step = V.dragPerRow * this._K
     const n = this._rows.length
-    const next = this._downPos + (this._downY - p.y) / pitch
+    const next = this._downPos + (this._downY - p.y) / step
     this._pos = Math.max(0, Math.min(n - 1, next))
     this.draw()
   },
