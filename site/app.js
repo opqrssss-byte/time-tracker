@@ -828,7 +828,7 @@ function updatePickOverlay() {
   layer.classList.toggle('hidden', !on)
   if (!on) return
 
-  const ids = ringData.map((x) => x.id).concat(['__add__'])   // 末位固定「新增项目」
+  const ids = ringData.map((x) => x.id)      // 只有分类；「新增」固定在底部那一格
 
   if (ids.join(',') !== pickIds.join(',')) {
     box.innerHTML = ''
@@ -837,9 +837,7 @@ function updatePickOverlay() {
     ids.forEach((id) => {
       const el = document.createElement('div')
       el.className = 'wp-row'
-      el.innerHTML = id === '__add__'
-        ? '<div class="wp-bar wp-add"><span class="wp-plus"></span><span class="wp-nm">新增项目</span><span class="wp-prog"></span></div>'
-        : '<div class="wp-bar"><span class="wp-nm"></span><span class="wp-du"></span><span class="wp-prog"></span></div>'
+      el.innerHTML = '<div class="wp-bar"><span class="wp-nm"></span><span class="wp-du"></span><span class="wp-prog"></span></div>'
       box.appendChild(el)
       const bar = el.querySelector('.wp-bar')
       pickRows.push({
@@ -868,8 +866,7 @@ function updatePickOverlay() {
       const it = ringData.find((x) => x.id === r.id) || {}
       r.nm.textContent = pickName(r.id)
       if (r.du) r.du.textContent = (it.sec || 0) > 0 ? fmtDurMin(it.sec) : '—'
-      const icon = r.id === '__add__' ? 16 : 0    // ＋ 是线条画的 14px 图标 + 2px 间距
-      L0 = Math.max(L0, r.nm.scrollWidth + r.du.scrollWidth + icon + 10 + 34 + 2)
+      L0 = Math.max(L0, r.nm.scrollWidth + r.du.scrollWidth + 10 + 32 + 2)
     })
     L0 = Math.min(L0, maxW)
   } catch (err) {
@@ -885,7 +882,6 @@ function updatePickOverlay() {
     r.el.style.visibility = a > 2.5 ? 'hidden' : 'visible'
     r.el.classList.toggle('cur', d === 0)
 
-    if (r.id === '__add__') { r.bar.style.width = L0 + 'px'; return }
     const it = ringData.find((x) => x.id === r.id) || {}
     const ghost = !!it.ghost && !it.active
     const share = Math.min(1, (it.sec || 0) / maxSec)
@@ -1011,12 +1007,12 @@ function clearFocus() {
 }
 
 /* 沿环（按绘制顺序）步进一格，首尾循环 */
-/* 滚轮可停留的项 = 环上的分类 + 末位「新增项目」。
-   以前只用 ringData，而「新增」只活在浮层里 → **滚轮永远滚不到它、只能点**，
-   所以它没法"停留确认"（用户报的正是这个）。
-   把「新增」并进这条序列后，停顿 900ms 或点击都会走 finishConfirm 里的
-   `id === '__add__'` 分支打开新增面板，与其他项完全同构。 */
-function focusableIds() { return ringData.map((x) => x.id).concat('__add__') }
+/* 滚轮只转**分类**。
+   「新增项目」刻意不进这条序列 —— 用户："新增不应该和切换项目用同样的逻辑，
+   做出一点差异性"。切换 = 滚轮循环 + 停留确认；新增 = 底部独立一格、只接受点击。
+   （曾经把「新增」并进序列让它可停留，结果是每转一圈都会扫过它、一停就弹面板，
+    太重也容易误触。） */
+function focusableIds() { return ringData.map((x) => x.id) }
 
 function stepFocus(dir) {
   const ids = focusableIds()
@@ -1249,9 +1245,17 @@ if (pickEl) {
     cancelConfirm()
     clearFocus()
     if (id === '__other__') { openOthersPanel(); return }
-    if (id === '__add__') { openWidgetAddPanel(); return }
     clearHover()
     onSectorClick(id)
+  })
+}
+/* 底部「新增项目」：独立一格，**只走点击**，不参与滚轮与停留 */
+const pickAddEl = $('widget-pick-add')
+if (pickAddEl) {
+  pickAddEl.addEventListener('click', () => {
+    cancelConfirm()
+    clearFocus()
+    openWidgetAddPanel()
   })
 }
 $('widget-ring-wrap').addEventListener('mouseleave', clearHover)

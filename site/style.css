@@ -610,57 +610,75 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 /* ============================================================================
    桌面组件 · 切换态浮层
    ----------------------------------------------------------------------------
-   · 方形遮罩铺满窗口（不再用 border-radius:50% 圈在 152 的圆盘里）——
-     那圈把条宽压到 130，也把上下两行裁掉了。改用方形后条能到 230+。
-   · 条做大：行高 46、字 15/12.5（原来是 32 / 12/10，太小不直观）
-   · 与小程序同一套视觉：每行即一条荧光条，文字嵌在条内，条长 = 今日时长
+   两层逻辑刻意分开（用户："新增不应该和切换项目用同样的逻辑，做出一点差异性"）：
+     · 分类切换 = 滚轮循环 + 停留 900ms 自动确认
+     · 新增项目 = 固定在底部单独一格，**只接受点击**，不进滚轮序列
    ============================================================================ */
 #widget-pick {
-  position: fixed; inset: 6px;
-  border-radius: 16px;
+  /* 比盘大一圈的方形（铺满窗口太突兀：248×368 从 152 的圆盘跳过去太重）。
+     ⚠️ 用 absolute 而非 fixed：要相对**表盘**居中，而不是相对窗口 ——
+     表盘不一定在窗口正中，用 fixed 会两者错开。 */
+  position: absolute; left: 50%; top: 50%;
+  width: 208px; height: 300px;
+  transform: translate(-50%, -50%);
+  border-radius: 18px;
   overflow: hidden;
-  background: rgba(9, 10, 12, .74);
+  background: rgba(9, 10, 12, .76);
   -webkit-backdrop-filter: blur(11px) saturate(125%);
   backdrop-filter: blur(11px) saturate(125%);
   opacity: 1; transition: opacity 140ms ease;
 }
 #widget-pick.hidden { opacity: 0; pointer-events: none; }
 
-#widget-pick-list { position: absolute; inset: 0; }
+/* 列表区避开底部那一格 */
+#widget-pick-list { position: absolute; left: 0; right: 0; top: 0; bottom: 58px; }
 
 .wp-row {
-  position: absolute; left: 14px; right: 14px;
+  position: absolute; left: 12px; right: 12px;
   /* 位置用 top 表达（JS 写 calc(50% + Npx)），transform 只负责居中。
-     之前把偏移写进 transform 的 translateY(calc(-50% + Npx)) —— 百分比与像素混用的
-     calc 判为无效后**整条声明被静默丢弃**，于是所有行全叠在一起。 */
+     把偏移写进 transform 的 translateY(calc(-50% + Npx)) 会因"百分比与像素混用的
+     calc 无效"被整条丢弃 → 所有行叠在中心。 */
   top: 50%; transform: translateY(-50%);
   display: flex; justify-content: flex-start;
-  /* top 由 JS 按"环形最短距离"写入 → 到末位自然绕回开头，是真循环而不是跳回 */
+  /* top 由 JS 按"环形最短距离"写入 → 到末位自然绕回开头 */
   transition: top 150ms cubic-bezier(.22,1,.36,1), opacity 150ms ease;
   will-change: top, opacity;
 }
 .wp-bar {
   position: relative; display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; height: 46px; border-radius: 999px; padding: 0 17px;
-  box-sizing: border-box; min-width: 96px; overflow: hidden;
+  gap: 10px; height: 44px; border-radius: 999px; padding: 0 16px;
+  box-sizing: border-box; min-width: 92px; overflow: hidden;
 }
-.wp-nm { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wp-du { font-size: 12.5px; font-weight: 500; opacity: .8; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.wp-row.cur .wp-nm { font-size: 16.5px; }
+.wp-nm { font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wp-du { font-size: 12px; font-weight: 500; opacity: .8; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wp-row.cur .wp-nm { font-size: 16px; }
 .wp-row.cur .wp-bar { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .34), 0 0 18px rgba(255, 255, 255, .16); }
 
-/* 确认进度：原来画在环上的弧（被浮层盖住），搬到选中条底部。
-   「新增项目」也能停留，所以它同样有这条进度线。 */
+/* 确认进度线（原在环上的弧被浮层盖住了，搬到这里） */
 .wp-prog {
   position: absolute; left: 0; bottom: 0; height: 3px; width: 0%;
   background: rgba(255, 255, 255, .92); border-radius: 0 3px 3px 0;
 }
 
-/* 「新增项目」：无颜色的空条 + 线条画的 ＋（不用「＋」字符：全角且受字体回退影响） */
-.wp-add { background: rgba(255, 255, 255, .10); color: rgba(255, 255, 255, .68); }
-.wp-plus { position: relative; width: 14px; height: 14px; flex: none; margin-right: 2px; }
+/* ── 「新增项目」：底部独立一格，只接受点击 ──
+   与分类条刻意不同：方形圆角、居中、上方一道分隔线、无进度线、不参与停留。 */
+#widget-pick-add {
+  position: absolute; left: 12px; right: 12px; bottom: 10px; height: 38px;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  border: 0; cursor: pointer;
+  border-radius: 12px;                  /* 圆角比方一点，与胶囊状分类条区分开 */
+  background: rgba(255, 255, 255, .07);
+  color: rgba(255, 255, 255, .70);
+  font-size: 13.5px; font-weight: 600;
+  font-family: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
+  transition: background 120ms ease, color 120ms ease;
+}
+#widget-pick-add:hover { background: rgba(255, 255, 255, .13); color: #fff; }
+#widget-pick-add:active { background: rgba(255, 255, 255, .18); }
+.wp-plus { position: relative; width: 12px; height: 12px; flex: none; }
 .wp-plus::before, .wp-plus::after {
   content: ''; position: absolute; background: currentColor; border-radius: 1px;
 }
-.wp-plus::before { left: 0; top: 6px; width: 14px; height: 2px; }
-.wp-plus::after { left: 6px; top: 0; width: 2px; height: 14px; }
+.wp-plus::before { left: 0; top: 5px; width: 12px; height: 2px; }
+.wp-plus::after { left: 5px; top: 0; width: 2px; height: 12px; }
