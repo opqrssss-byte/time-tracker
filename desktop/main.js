@@ -150,6 +150,12 @@ function createWidget() {
     hasShadow: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      /* ⚠️ 必须与完整版窗口用**同一个** session 分区。
+         原来组件窗口用默认 session、完整版用 'persist:timetracker' ——
+         两个窗口的登录态是分开存的，于是在完整版里登录组件根本看不到；
+         组件的登录态一旦过期就再也恢复不了（点「打开完整版登录」也白点，
+         因为登录进的是另一个 session）。这是长期潜伏的 bug，2026-10-11 定位。 */
+      session: session.fromPartition('persist:timetracker'),
       contextIsolation: true,
       nodeIntegration: false,
       session: session.fromPartition('persist:timetracker'),
