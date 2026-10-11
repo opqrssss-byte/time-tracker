@@ -45,6 +45,13 @@ if (!gotLock) {
   })
 
   app.whenReady().then(() => {
+    /* 组件/完整版的界面是**热更新**的（加载线上网址），但 Electron 会把页面缓存住 ——
+       线上已经发了新版，组件却还显示旧界面（2026-10-11 实际遇到：
+       线上 app.js/style.css 与本地逐项一致，唯独组件窗口是旧的）。
+       每次启动清一次 HTTP/JS 缓存。
+       ⚠️ 只清 Cache，**不动 Local Storage** → 登录态保留，只是每次启动重新拉一次页面
+       （站点很小，无感）。clearCache 是 **session 的方法**，不能写进 webPreferences。 */
+    session.fromPartition('persist:timetracker').clearCache()
     createWidget()
 
     ipcMain.on('widget:resize', (_e, payload) => {
