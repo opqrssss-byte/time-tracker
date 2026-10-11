@@ -623,15 +623,28 @@ textarea:focus { border-color: var(--primary); background: #fff; }
   transform: translate(-50%, -50%);
   border-radius: 18px;
   overflow: hidden;
-  background: rgba(9, 10, 12, .76);
+  /* 边缘柔化，两层一起做：
+     ① 底色用径向渐变收边（中心实、边缘淡）
+     ② 再用 mask 让**整块元素**（含 backdrop-filter 的模糊）在边缘淡出。
+     ⚠️ 只做①是不够的：backdrop-filter 的作用范围是元素的矩形边界，
+        底色淡了但它背后的模糊仍然是硬边，照样突兀。 */
+  background: radial-gradient(ellipse 92% 86% at 50% 47%,
+    rgba(9, 10, 12, .88) 0%,
+    rgba(9, 10, 12, .80) 58%,
+    rgba(9, 10, 12, .52) 84%,
+    rgba(9, 10, 12, 0) 100%);
   -webkit-backdrop-filter: blur(11px) saturate(125%);
   backdrop-filter: blur(11px) saturate(125%);
+  -webkit-mask-image: radial-gradient(ellipse 108% 106% at 50% 50%,
+    #000 82%, rgba(0, 0, 0, .72) 92%, rgba(0, 0, 0, 0) 100%);
+  mask-image: radial-gradient(ellipse 108% 106% at 50% 50%,
+    #000 82%, rgba(0, 0, 0, .72) 92%, rgba(0, 0, 0, 0) 100%);
   opacity: 1; transition: opacity 140ms ease;
 }
 #widget-pick.hidden { opacity: 0; pointer-events: none; }
 
 /* 列表区避开底部那一格 */
-#widget-pick-list { position: absolute; left: 0; right: 0; top: 0; bottom: 58px; }
+#widget-pick-list { position: absolute; left: 0; right: 0; top: 0; bottom: 66px; }
 
 .wp-row {
   position: absolute; left: 12px; right: 12px;
@@ -663,7 +676,8 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 /* ── 「新增项目」：底部独立一格，只接受点击 ──
    与分类条刻意不同：方形圆角、居中、上方一道分隔线、无进度线、不参与停留。 */
 #widget-pick-add {
-  position: absolute; left: 12px; right: 12px; bottom: 10px; height: 38px;
+  /* bottom 留 18px：下方要留出柔化的淡出带，否则按钮会被一起淡掉 */
+  position: absolute; left: 12px; right: 12px; bottom: 18px; height: 38px;
   display: flex; align-items: center; justify-content: center; gap: 7px;
   border: 0; cursor: pointer;
   border-radius: 12px;                  /* 圆角比方一点，与胶囊状分类条区分开 */
@@ -682,3 +696,9 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 }
 .wp-plus::before { left: 0; top: 5px; width: 12px; height: 2px; }
 .wp-plus::after { left: 5px; top: 0; width: 2px; height: 12px; }
+
+/* 表盘在组件窗口里居中。
+   原来它贴在窗口顶端（260×380 的窗口里，152 的盘落在 y≈4..156），
+   于是任何"以表盘为中心"的浮层都会被窗口上边缘裁掉。
+   #widget-pick 用 absolute 相对表盘居中（不是相对窗口），前提就是表盘本身得在窗口正中。 */
+body.widget-mode { display: flex; align-items: center; justify-content: center; }
