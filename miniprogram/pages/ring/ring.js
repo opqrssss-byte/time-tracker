@@ -1,15 +1,15 @@
 /* ============================================================================
-   环形模式 · 拖环旋转 + 松手确认（首页，没有"停止"）
+   环形模式 · 首页（拖不了环了 —— 整屏上下滑选分类）
    ----------------------------------------------------------------------------
-   来源：prototype/（网页原型，自测 32/32，几何与桌面端逐值校验过）。
+   视觉与交互来源：prototype/draft-hold-list.html v3（用户 10-11 拍板）
 
-   ⚠️ 结构上的关键决定：**盘、环、环心读数全部画进 canvas**，页面上不压任何 view。
-   原因（踩过的坑）：小程序的 canvas 是**原生组件**，层级最高；反过来，只要有普通
-   view 压在 canvas 上，那块区域的触摸会被 view 吃掉 —— 上一版把"环心读数"做成
-   叠在 canvas 上的 view，结果整个圆环都拖不动。现在那个区域只有 canvas 一个元素，
-   触摸不可能被别的东西截走。
+   为什么 canvas 铺满整屏、所有东西都画在里面：
+     · 需求是"屏幕任意位置上下滑都能切换" → 手势载体必须覆盖全屏
+     · 小程序里 canvas 是**原生组件**，层级最高；反过来说，**压在它上面的普通 view
+       会把那块区域的触摸全吃掉**（上一版把环心读数做成叠上去的 view，整个环都拖不动）
+     → 全屏 canvas + 页面上不压任何 view，触摸不可能被别的东西截走
 
-   坐标：画布与舞台同尺寸（不再负偏移），所以环心 = 画布中心，换算只有一处。
+   手势：按下(任意处) → 列表浮出 → 上下滑切换 → 松手提交；滑到底可选中「新增分类」
    ========================================================================== */
 const { cloud } = require('../../utils/cloud')
 const { ensureSession } = require('../../utils/util')
@@ -21,40 +21,36 @@ const DEFAULT_CATEGORIES = [
   { name: '运动', color: '#2FBF71', sort_order: 3 },
   { name: '生活', color: '#F2A93B', sort_order: 4 },
 ]
+const SWATCH = ['#4F8CFF', '#9B6DFF', '#2FBF71', '#F2A93B', '#23B8D5', '#F06EAA', '#FF5A5A', '#8a91a3']
 
-/* 手感参数：与网页原型同一套默认值 */
-const P = {
-  stepDeg: 40, jitterDeg: 1.5, maxStepsPerMove: 3,
-  tapMoveTolDeg: 8, tapMaxMs: 350,
-  touchPad: 16, centerHole: 34,
-  outPush: 1.35, detentMs: 160,   // detentMs = 选中弧"鼓一下"的时长（不再扭整环，见 step()）
-  glow: 7, ghostDeg: 4.5, maxSectors: 7,
-  haptic: true,
+/* 视觉参数：与草稿 v3 同源，全部按屏宽 K 等比（375 宽为设计基准） */
+const V = {
+  pitch: 76, barH: 58, barSelH: 68, barMaxW: 335, padL: 18, padR: 20,
+  nameSize: 19, nameSelSize: 24, durSize: 13, durSelSize: 14,
+  plateR: 121.6, ringR: 86.4, ringSW: 17.6, gapVis: 6.4, ghostDeg: 4.5, maxSectors: 7,
+  dialAt: 0.40, listAt: 0.50, revealMs: 200,
 }
-
-/* 深色 token：照桌面组件 DESIGN.md（表面阶梯 + 发丝描边 + 内高光，不用投影） */
 const T = {
-  plate: '#131417',
-  hairline: 'rgba(255,255,255,0.08)',
-  highlight: 'rgba(255,255,255,0.10)',
-  track: 'rgba(255,255,255,0.07)',
-  ghost: 'rgba(255,255,255,0.14)',
-  ink: '#f4f4f6',
-  body: '#cdcdcd',
-  ash: '#5c5d60',
-  danger: '#FF5A5A',
-  glowA: 0.6,          // 深色底上辉光可以给满（浅色底要给 0.38，否则显脏）
+  plate: '#131417', hairline: 'rgba(255,255,255,0.08)',
+  track: 'rgba(255,255,255,0.06)', ghost: 'rgba(255,255,255,0.13)',
+  ink: '#f4f4f6', body: '#cdcdcd', ash: '#5c5d60', danger: '#FF5A5A',
+  addFill: 'rgba(255,255,255,0.08)', addInk: 'rgba(255,255,255,0.62)',
 }
 
+const ADD_ID = '__add__'
+
+/* 亮底用深字、暗底用白字。阈值 .62：再低会把中蓝/中绿也判成深字，整排字色就乱了 */
+function inkFor(hex) {
+  const r = parseInt(String(hex).slice(1, 3), 16)
+  const g = parseInt(String(hex).slice(3, 5), 16)
+  const b = parseInt(String(hex).slice(5, 7), 16)
+  const L = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return L > 0.62 ? 'rgba(12,14,18,0.9)' : 'rgba(255,255,255,0.97)'
+}
 const easeOut = (p) => 1 - Math.pow(1 - p, 3)
 
 Page({
-  data: {
-    canvasPx: 0, padTop: 40,
-    focusName: '', focusDur: '', focusColor: '#ffffff', showCand: false,
-    showHint: true,
-    diag: '',
-  },
+  data: {},
 
   onReady() { this.initCanvas() },
 
@@ -64,7 +60,6 @@ Page({
     await this.loadCategories()
     await this.refreshRunning()
     await this.refreshTodayStats()
-    this.refreshRect()
     this.startTicker()
     this.rebuild()
   },
@@ -73,64 +68,40 @@ Page({
   onUnload() { this.clearTimers() },
 
   clearTimers() {
-    ;['_ticker', '_poll', '_breathe', '_a_push', '_a_kick'].forEach((k) => {
+    ;['_ticker', '_breathe', '_a_reveal'].forEach((k) => {
       if (this[k]) { clearInterval(this[k]); this[k] = null }
     })
   },
 
-  /* ---------- 一、画布 ---------- */
+  /* ---------- 一、画布：铺满整屏 ---------- */
   initCanvas() {
     let win = {}
     try { win = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()) || {} } catch (e) { win = {} }
-    const w = win.windowWidth || 375
     const dpr = win.pixelRatio || 2
-    const K = w / 375
-    this._K = K
     this._dpr = dpr
-    /* 几何全部按屏宽等比：375 宽为设计基准（与 prototype/ 一致） */
-    this._G = { R: 86.4 * K, SW: 17.6 * K, GAP_VIS: 6.4 * K, PLATE_R: 121.6 * K }
-    const canvasPx = 279.2 * K
-    this.setData({ canvasPx, padTop: (win.statusBarHeight || 20) + 28 })
 
-    const q = wx.createSelectorQuery()
-    q.select('#ring').fields({ node: true, size: true })
-    q.select('#ring').boundingClientRect()
-    q.exec((res) => {
-      const info = res && res[0]
-      const rect = res && res[1]
-      if (!info || !info.node) { this.setData({ diag: '画布初始化失败（没取到 canvas 节点）' }); return }
-      const canvas = info.node
-      const ctx = canvas.getContext('2d')
-      const cw = (rect && rect.width) || info.width || canvasPx
-      const ch = (rect && rect.height) || info.height || canvasPx
-      canvas.width = Math.round(cw * dpr)
-      canvas.height = Math.round(ch * dpr)
-      this._canvas = canvas
-      this._ctx = ctx
-      this._cw = cw
-      this._ch = ch
-      this.setRect(rect)
-      this.setData({ diag: '' })
-      this.rebuild()
-    })
-  },
-
-  setRect(rect) {
-    if (rect && rect.left != null && rect.top != null) {
-      this._rect = { left: rect.left, top: rect.top }
-      this._rectOk = true
-    } else {
-      this._rect = this._rect || { left: 0, top: 0 }
-      this._rectOk = false
-    }
-  },
-
-  /* 布局可能变（切 tab 回来、横竖屏），触摸前重取一次位置 */
-  refreshRect() {
-    if (!this._canvas) return
-    wx.createSelectorQuery().select('#ring').boundingClientRect().exec((res) => {
-      this.setRect(res && res[0])
-    })
+    wx.createSelectorQuery().select('#ring')
+      .fields({ node: true, size: true })
+      .exec((res) => {
+        const info = res && res[0]
+        if (!info || !info.node) { this._diag = '画布初始化失败（没取到 canvas 节点）'; return }
+        const canvas = info.node
+        const ctx = canvas.getContext('2d')
+        const w = info.width || win.windowWidth || 375
+        const h = info.height || win.windowHeight || 667
+        canvas.width = Math.round(w * dpr)
+        canvas.height = Math.round(h * dpr)
+        ctx.scale(dpr, dpr)
+        this._canvas = canvas
+        this._ctx = ctx
+        this._w = w
+        this._h = h
+        this._K = w / 375
+        this._dialY = h * V.dialAt
+        this._listY = h * V.listAt
+        this._diag = ''
+        this.rebuild()
+      })
   },
 
   /* ---------- 二、数据 ---------- */
@@ -155,7 +126,7 @@ Page({
   async refreshTodayStats() {
     const start = new Date(); start.setHours(0, 0, 0, 0)
     const { data, error } = await cloud.database.from('time_entries')
-      .select('category_id,duration_sec,title,start_time')
+      .select('category_id,duration_sec,start_time')
       .gte('start_time', start.toISOString())
       .not('end_time', 'is', null)
       .order('start_time', { ascending: false }).limit(500)
@@ -170,311 +141,289 @@ Page({
 
   startTicker() {
     if (this._ticker) clearInterval(this._ticker)
-    this._ticker = setInterval(() => { this.rebuild() }, 1000)
-    // 呼吸动画走慢节奏（不挂常驻 rAF，手机省电）
+    this._ticker = setInterval(() => this.rebuild(), 1000)
+    // 呼吸动画走慢节奏（手机端不挂常驻 rAF）
     if (this._breathe) clearInterval(this._breathe)
     this._breathe = setInterval(() => {
-      if (!this._running || !this._layout) return
-      this._breathPhase = (this._breathPhase || 0) + 0.25
+      if (!this._running || this._open) return
+      this._breath = ((this._breath || 0) + 0.25) % (Math.PI * 2)
       this.draw()
     }, 120)
   },
 
-  /* ---------- 三、几何 ---------- */
+  /* ---------- 三、几何与行数据 ---------- */
   runningId() { return this._running ? (this._running.category_id || '__none__') : null },
 
   catById(id) {
-    const cats = this._cats || []
-    for (let i = 0; i < cats.length; i++) if (cats[i].id === id) return cats[i]
+    const c = this._cats || []
+    for (let i = 0; i < c.length; i++) if (c[i].id === id) return c[i]
     return null
   },
 
   rebuild() {
-    if (!this._G) return
+    if (!this._K) return
+    const K = this._K
     const elapsed = RM.elapsedSec(this._running, Date.now())
     const items = RM.sectors(this._cats || [], this._byCat || {}, this._running, elapsed, {
-      ghostDeg: P.ghostDeg, maxSectors: P.maxSectors,
+      ghostDeg: V.ghostDeg, maxSectors: V.maxSectors,
     })
-    this._layout = RM.layout(items, { R: this._G.R, SW: this._G.SW, GAP_VIS: this._G.GAP_VIS })
-    this.renderCandidate()
+    const G = {
+      R: V.ringR * K, SW: V.ringSW * K, GAP_VIS: V.gapVis * K, PLATE_R: V.plateR * K,
+    }
+    this._G = G
+    this._laid = RM.layout(items, G)
+    // 行：分类（按环上顺序，也就是今日时长降序）+ 末尾「新增分类」
+    this._rows = this._laid.map((it) => ({
+      id: it.id, name: it.name, color: it.ghost ? T.ash : it.color,
+      sec: it.sec || 0, ghost: !!it.ghost, isAdd: false,
+    }))
+    this._rows.push({ id: ADD_ID, name: '新增分类', color: T.addFill, sec: 0, ghost: false, isAdd: true })
+    this._maxSec = Math.max(1, ...this._rows.map((r) => r.sec))
+    // 零点 L0 = 最宽那行文字所需的宽（用选中字号算，保证选中时也不挤）
+    this._L0 = this.computeL0()
     this.draw()
   },
 
-  renderCandidate() {
-    const id = this._focusId
-    /* 去重键要把"是否在计时"也带上：否则开始计时后 key 不变，引导语会一直留着 */
-    const key = (id || '') + '|' + (this._layout ? this._layout.length : 0) + '|' + (this._running ? 1 : 0)
-    if (key === this._candKey) return
-    this._candKey = key
-    if (!id) {
-      this.setData({ showCand: false, showHint: !this._running })
-      return
-    }
-    let it = null
-    const laid = this._layout || []
-    for (let i = 0; i < laid.length; i++) if (laid[i].id === id) { it = laid[i]; break }
-    const name = id === '__none__' ? '未分类' : id === '__other__' ? '其他分类' : (it ? it.name : '')
-    this.setData({
-      showCand: true,
-      showHint: false,
-      focusName: name,
-      focusColor: it && !it.ghost ? it.color : '#8a8f98',
-      focusDur: it && it.sec ? RM.fmtDurMin(it.sec) : '今天还没有',
-    })
+  measure(text, size, weight) {
+    const ctx = this._ctx
+    if (!ctx) return 0
+    ctx.font = (weight || 400) + ' ' + Math.round(size) + 'px sans-serif'
+    return ctx.measureText(String(text)).width
   },
 
-  /* ---------- 四、绘制（盘 + 环 + 环心读数，全在 canvas 里） ---------- */
+  needOf(r) {
+    const K = this._K
+    const pad = (V.padL + V.padR) * K
+    if (r.isAdd) return this.measure('＋ ' + r.name, V.nameSize * K, 600) + pad
+    const nameW = this.measure(r.name, V.nameSelSize * K, 600)
+    const durW = this.measure(r.sec ? RM.fmtDurMin(r.sec) : '今天还没有', V.durSelSize * K, 500)
+    return nameW + 10 * K + durW + pad
+  },
+
+  computeL0() {
+    let L0 = 60 * this._K
+    ;(this._rows || []).forEach((r) => { L0 = Math.max(L0, this.needOf(r)) })
+    return L0
+  },
+
+  /* ---------- 四、绘制 ---------- */
   draw() {
     const ctx = this._ctx
-    if (!ctx || !this._G) return
-    const G = this._G
-    const K = this._K
-    const W = this._cw
-    const H = this._ch
-    const cx = W / 2
-    const cy = H / 2
-    const rad = (deg) => (deg - 90) * Math.PI / 180
-
+    if (!ctx) return
+    const rev = this._reveal == null ? 0 : this._reveal
     ctx.setTransform(this._dpr, 0, 0, this._dpr, 0, 0)
-    ctx.clearRect(0, 0, W, H)
-
-    /* 盘：层级靠"表面阶梯 + 发丝描边 + 顶部内高光"，不用投影（桌面组件的做法） */
-    ctx.beginPath()
-    ctx.arc(cx, cy, G.PLATE_R, 0, Math.PI * 2)
-    ctx.fillStyle = T.plate
-    ctx.fill()
-    ctx.beginPath()
-    ctx.arc(cx, cy, G.PLATE_R - 0.5, 0, Math.PI * 2)
-    ctx.strokeStyle = T.hairline
-    ctx.lineWidth = 1
-    ctx.stroke()
-    ctx.beginPath()
-    ctx.arc(cx, cy, G.PLATE_R - 1.5, rad(202), rad(338))
-    ctx.strokeStyle = T.highlight
-    ctx.lineWidth = 1.5
-    ctx.stroke()
-
-    /* 环（整环不再随档位旋转，见 step() 的注释） */
-    ctx.save()
-    ctx.translate(cx, cy)
-
-    ctx.beginPath()
-    ctx.arc(0, 0, G.R, 0, Math.PI * 2)
-    ctx.lineWidth = G.SW
-    ctx.strokeStyle = T.track
-    ctx.stroke()
-
-    const laid = this._layout || []
-    const push = this._push == null ? 0 : this._push
-    const kick = this._kick == null ? 0 : this._kick
-    const breath = this._running ? (0.74 + 0.26 * (0.5 + 0.5 * Math.sin(this._breathPhase || 0))) : 1
-
-    for (let i = 0; i < laid.length; i++) {
-      const it = laid[i]
-      const focused = this._focusId === it.id
-      const active = !!it.active
-      let w = G.SW
-      // 选中弧：外推（持续）+ 档位鼓一下（瞬时，替代原来扭整环）
-      if (focused) w = G.SW * (1 + (P.outPush - 1) * push + 0.12 * kick)
-
-      ctx.beginPath()
-      ctx.arc(0, 0, G.R, rad(it.drawStart), rad(it.drawEnd))
-      ctx.lineWidth = w
-      ctx.lineCap = 'round'
-      ctx.strokeStyle = it.ghost ? T.ghost : it.color
-      // 深色底上辉光可以给满（浅色底上会显脏，网页原型里为此收过强度）
-      if (active || focused) {
-        ctx.shadowColor = RM.rgba(it.color, T.glowA)
-        ctx.shadowBlur = P.glow * (focused ? 1.15 : 1) * (active ? breath : 1)
-      } else {
-        ctx.shadowBlur = 0
-      }
-      ctx.globalAlpha = active ? breath : 1
-      ctx.stroke()
-      ctx.shadowBlur = 0
+    ctx.clearRect(0, 0, this._w, this._h)
+    if (rev < 1) this.drawDial(ctx, 1 - rev)
+    if (rev > 0) this.drawList(ctx, rev)
+    if (this._diag) {
       ctx.globalAlpha = 1
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillStyle = T.danger; ctx.font = '400 12px sans-serif'
+      ctx.fillText(this._diag, this._w / 2, this._h - 40)
     }
-    ctx.restore()
-
-    this.drawCenter(ctx, cx, cy)
   },
 
-  /* 环心读数：两行（大字 + 状态行），与桌面组件的主通道一致 */
-  drawCenter(ctx, cx, cy) {
-    const K = this._K
-    const run = this._running
-    const cat = run ? this.catById(run.category_id) : null
-    const txt = run ? RM.fmtMS(RM.elapsedSec(run, Date.now())) : '0:00'
+  capsule(ctx, x, y, w, h) {
+    const r = h / 2
+    ctx.beginPath()
+    ctx.moveTo(x + r, y)
+    ctx.lineTo(x + w - r, y)
+    ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2)
+    ctx.lineTo(x + r, y + h)
+    ctx.arc(x + r, y + r, r, Math.PI / 2, Math.PI * 1.5)
+    ctx.closePath()
+  },
 
+  /* 环（空闲态）：盘 + 环 + 环心读数 */
+  drawDial(ctx, alpha) {
+    if (alpha <= 0.02) return
+    const K = this._K
+    const G = this._G
+    if (!G) return
+    const cx = this._w / 2
+    const cy = this._dialY
+    const rad = (d) => (d - 90) * Math.PI / 180
+
+    ctx.save()
+    ctx.globalAlpha = alpha
+
+    ctx.beginPath(); ctx.arc(cx, cy, G.PLATE_R, 0, Math.PI * 2)
+    ctx.fillStyle = T.plate; ctx.fill()
+    ctx.beginPath(); ctx.arc(cx, cy, G.PLATE_R - 0.5, 0, Math.PI * 2)
+    ctx.strokeStyle = T.hairline; ctx.lineWidth = 1; ctx.stroke()
+
+    ctx.save()
+    ctx.translate(cx, cy)
+    ctx.beginPath(); ctx.arc(0, 0, G.R, 0, Math.PI * 2)
+    ctx.lineWidth = G.SW; ctx.strokeStyle = T.track; ctx.stroke()
+
+    const breath = this._running ? (0.74 + 0.26 * (0.5 + 0.5 * Math.sin(this._breath || 0))) : 1
+    const laid = this._laid || []
+    for (let i = 0; i < laid.length; i++) {
+      const it = laid[i]
+      ctx.beginPath()
+      ctx.arc(0, 0, G.R, rad(it.drawStart), rad(it.drawEnd))
+      ctx.lineWidth = G.SW
+      ctx.lineCap = 'round'
+      ctx.strokeStyle = it.ghost ? T.ghost : it.color
+      if (it.active) {
+        ctx.shadowColor = RM.rgba(it.color, 0.6)
+        ctx.shadowBlur = 7
+      } else { ctx.shadowBlur = 0 }
+      ctx.globalAlpha = alpha * (it.active ? breath : 1)
+      ctx.stroke()
+      ctx.shadowBlur = 0
+    }
+    ctx.globalAlpha = alpha
+    ctx.restore()
+
+    // 环心两行：大字 + 状态行
+    const cat = this._running ? this.catById(this._running.category_id) : null
+    const txt = this._running ? RM.fmtMS(RM.elapsedSec(this._running, Date.now())) : '0:00'
     ctx.textBaseline = 'middle'
     ctx.textAlign = 'center'
-    ctx.fillStyle = run ? T.ink : T.ash
+    ctx.fillStyle = this._running ? T.ink : T.ash
     ctx.font = '600 ' + Math.round(40 * K) + 'px sans-serif'
     ctx.fillText(txt, cx, cy - 11 * K)
 
-    const name = run ? (cat ? cat.name : '未分类') : '空闲'
+    const name = this._running ? (cat ? cat.name : '未分类') : '空闲'
     ctx.font = '500 ' + Math.round(15 * K) + 'px sans-serif'
     const tw = ctx.measureText(name).width
-    const dotR = 4 * K
-    const gap = 8 * K
-    const startX = cx - (dotR * 2 + gap + tw) / 2
-
-    ctx.beginPath()
-    ctx.arc(startX + dotR, cy + 21 * K, dotR, 0, Math.PI * 2)
-    ctx.fillStyle = run ? (cat ? cat.color : T.danger) : T.ash
-    ctx.globalAlpha = run ? (0.72 + 0.28 * (0.5 + 0.5 * Math.sin(this._breathPhase || 0))) : 1
+    const dotR = 4 * K, gap = 8 * K
+    const sx = cx - (dotR * 2 + gap + tw) / 2
+    ctx.beginPath(); ctx.arc(sx + dotR, cy + 21 * K, dotR, 0, Math.PI * 2)
+    ctx.fillStyle = this._running ? (cat ? cat.color : T.danger) : T.ash
     ctx.fill()
-    ctx.globalAlpha = 1
-
     ctx.textAlign = 'left'
-    ctx.fillStyle = run ? T.body : T.ash
-    ctx.fillText(name, startX + dotR * 2 + gap, cy + 21 * K)
+    ctx.fillStyle = this._running ? T.body : T.ash
+    ctx.fillText(name, sx + dotR * 2 + gap, cy + 21 * K)
+
+    ctx.restore()
   },
 
-  /* 补间：20ms 定时器推 _push / _kick，不挂常驻 rAF（手机省电）。
-     键名统一用 "_a_" + key，和 clearTimers 保持一致。 */
-  animateTo(key, to, ms) {
-    const prop = '_' + key
-    const slot = '_a_' + key
-    if (this[prop] === to && this[slot]) return
-    const from = this[prop] == null ? 0 : this[prop]
-    const t0 = Date.now()
-    if (this[slot]) clearInterval(this[slot])
-    this[slot] = setInterval(() => {
-      const p = Math.min(1, (Date.now() - t0) / ms)
-      this[prop] = from + (to - from) * easeOut(p)
-      this.draw()
-      if (p >= 1) {
-        clearInterval(this[slot])
-        this[slot] = null
-        this[prop] = to
+  /* 列表：每行 = 一条荧光条，文字嵌在条里；文字全在 canvas 里、页面上不压 view */
+  drawList(ctx, alpha) {
+    const K = this._K
+    const rows = this._rows || []
+    if (!rows.length) return
+    const pitch = V.pitch * K
+    const maxW = Math.min(V.barMaxW * K, this._w - 40 * K)
+    const L0 = Math.min(this._L0, maxW)
+    const cx = this._w / 2
+    const cy = this._listY
+    const pos = this._pos == null ? 0 : this._pos
+
+    ctx.save()
+    ctx.globalAlpha = alpha
+
+    for (let i = 0; i < rows.length; i++) {
+      const d = Math.abs(i - pos)
+      const rowA = d < 0.5 ? 1 : d < 1.5 ? 0.5 : d < 2.5 ? 0.26 : 0
+      if (rowA <= 0) continue
+      const r = rows[i]
+      const y = cy + (i - pos) * pitch
+      if (y < -pitch || y > this._h + pitch) continue
+      const isSel = d < 0.5
+
+      const h = (isSel ? V.barSelH : V.barH) * K
+      const share = r.isAdd ? 0 : Math.min(1, r.sec / this._maxSec)
+      const need = this.needOf(r)
+      const w = Math.max(need, L0 + (maxW - L0) * share)
+      const x = cx - maxW / 2
+
+      ctx.globalAlpha = alpha * rowA * (isSel ? 1 : 0.5)
+      ctx.fillStyle = r.isAdd ? T.addFill : r.color
+      if (!r.isAdd && !r.ghost) {
+        ctx.shadowColor = RM.rgba(r.color, isSel ? 0.55 : 0.28)
+        ctx.shadowBlur = isSel ? 26 : 16
+      } else { ctx.shadowBlur = 0 }
+      this.capsule(ctx, x, y - h / 2, w, h)
+      ctx.fill()
+      ctx.shadowBlur = 0
+
+      // 文字嵌在条内
+      const ink = r.isAdd ? T.addInk : (r.ghost ? 'rgba(255,255,255,0.72)' : inkFor(r.color))
+      const nameSize = (isSel ? V.nameSelSize : V.nameSize) * K
+      const durSize = (isSel ? V.durSelSize : V.durSize) * K
+      ctx.textBaseline = 'middle'
+      ctx.textAlign = 'left'
+      ctx.fillStyle = ink
+      ctx.font = '600 ' + Math.round(nameSize) + 'px sans-serif'
+      const label = r.isAdd ? '＋ ' + r.name : r.name
+      ctx.fillText(label, x + V.padL * K, y)
+      if (!r.isAdd) {
+        ctx.textAlign = 'right'
+        ctx.globalAlpha = alpha * rowA * (isSel ? 0.85 : 0.5)
+        ctx.font = '500 ' + Math.round(durSize) + 'px sans-serif'
+        ctx.fillText(r.sec ? RM.fmtDurMin(r.sec) : '今天还没有', x + w - V.padR * K, y)
       }
+    }
+    ctx.restore()
+  },
+
+  revealTo(on) {
+    const from = this._reveal == null ? 0 : this._reveal
+    const to = on ? 1 : 0
+    if (from === to) return
+    const t0 = Date.now()
+    if (this._a_reveal) clearInterval(this._a_reveal)
+    this._a_reveal = setInterval(() => {
+      const p = Math.min(1, (Date.now() - t0) / V.revealMs)
+      this._reveal = from + (to - from) * easeOut(p)
+      this.draw()
+      if (p >= 1) { clearInterval(this._a_reveal); this._a_reveal = null; this._reveal = to }
     }, 20)
   },
 
-  /* ---------- 五、触摸 ---------- */
-  touchPoint(e) {
+  /* ---------- 五、手势：整屏任意位置 ---------- */
+  pointOf(e) {
     const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
     if (!t) return null
-    const r = this._rect || { left: 0, top: 0 }
-    const vx = (t.clientX != null) ? t.clientX : (t.pageX != null ? t.pageX : 0)
-    const vy = (t.clientY != null) ? t.clientY : (t.pageY != null ? t.pageY : 0)
-    return { x: vx - r.left, y: vy - r.top }
+    const cy = (t.clientY != null) ? t.clientY : t.pageY
+    return { y: cy || 0 }
   },
 
   onTouchStart(e) {
-    if (!this._ctx) return
-    const p = this.touchPoint(e)
+    if (!this._ctx || !this._rows) return
+    const p = this.pointOf(e)
     if (!p) return
-    /* 自诊断：坐标落在画布外 = rect 没取对。只在这种时候显示，正常用不会看到 */
-    if (p.x < -4 || p.y < -4 || p.x > this._cw + 4 || p.y > this._ch + 4) {
-      this.setData({
-        diag: '触摸坐标异常 ' + Math.round(p.x) + ',' + Math.round(p.y) +
-          ' 画布 ' + Math.round(this._cw) + '×' + Math.round(this._ch) +
-          ' rect ' + Math.round(this._rect.left) + ',' + Math.round(this._rect.top),
-      })
-    } else if (this.data.diag) {
-      this.setData({ diag: '' })
-    }
-
-    const hit = RM.hitTest(p.x, p.y, this._cw / 2, this._ch / 2, this._layout || [], {
-      R: this._G.R, SW: this._G.SW, TOUCH_PAD: P.touchPad,
-      PLATE_R: this._G.PLATE_R, CENTER_HOLE: P.centerHole,
-    })
-    this._pressing = true
-    this._pressZone = hit.zone
-    this._pressHitId = hit.id
-    this._pressFocusId = this._focusId || null
-    /* 触屏与滚轮的关键差别：滚轮没有起点，所以桌面那套是"从第 0 个扇区起跳"；
-       而手指是**按在哪块上就从哪块开始** —— 不这么做的话，你按住右边那块往上一拖，
-       高亮会跳到环的另一头（用户报的"选择和计时的色块不一致"就是这个）。 */
-    if ((hit.zone === 'band' || hit.zone === 'plate') && hit.id) {
-      this._pressFocusId = hit.id
-      this.setFocus(hit.id)
-    }
-    this._lastAngle = hit.deg
-    this._dragDeg = 0
-    this._dragSign = 0
-    this._netDeg = 0
-    this._moved = false
-    this._steps = 0
-    this._downT = Date.now()
+    // 初始选中"正在计时那一类"；空闲则从第一条开始
+    const rid = this.runningId()
+    let idx = rid ? this._rows.findIndex((r) => r.id === rid) : 0
+    if (idx < 0) idx = 0
+    this._pos = idx
+    this._downY = p.y
+    this._downPos = idx
+    this._open = true
+    this.revealTo(true)
   },
 
   onTouchMove(e) {
-    if (!this._pressing) return
-    if (this._pressZone === 'center' || this._pressZone === 'outside') return
-    const p = this.touchPoint(e)
+    if (!this._open) return
+    const p = this.pointOf(e)
     if (!p) return
-    const pol = RM.polarOf(p.x, p.y, this._cw / 2, this._ch / 2)
-    if (pol.r < 20) { this._lastAngle = pol.deg; return }
-    const delta = RM.norm180(pol.deg - this._lastAngle)
-    this._lastAngle = pol.deg
-    if (Math.abs(delta) < P.jitterDeg) return
-
-    const sign = delta > 0 ? 1 : -1
-    if (this._dragSign !== 0 && sign !== this._dragSign) this._dragDeg = 0
-    this._dragSign = sign
-    this._dragDeg += delta
-    this._netDeg += delta
-
-    const n = Math.floor(Math.abs(this._dragDeg) / P.stepDeg)
-    if (n > 0) {
-      const take = Math.min(n, P.maxStepsPerMove)
-      for (let i = 0; i < take; i++) this.step(sign)
-      this._dragDeg -= sign * take * P.stepDeg
-      this._moved = true
-    }
+    const pitch = V.pitch * this._K
+    const n = this._rows.length
+    const next = this._downPos + (this._downY - p.y) / pitch
+    this._pos = Math.max(0, Math.min(n - 1, next))
+    this.draw()
   },
 
   onTouchEnd() {
-    if (!this._pressing) return
-    this._pressing = false
-    const zone = this._pressZone
-    if (zone === 'outside') { this.setFocus(null); return }
-    if (zone === 'center') { if (this._focusId) this.setFocus(null); else this.haptic(); return }
-
-    const dt = Date.now() - this._downT
-    if (this._moved) { this.commit(this._focusId); this.setFocus(null); return }
-    if (Math.abs(this._netDeg) < P.tapMoveTolDeg && dt < P.tapMaxMs) {
-      this.commit(this._pressHitId)
-      this.setFocus(null)
-      return
-    }
-    this.setFocus(this._pressFocusId)
+    if (!this._open) return
+    this._open = false
+    this._pos = Math.round(this._pos || 0)
+    const r = this._rows[this._pos]
+    this.revealTo(false)
+    if (!r) return
+    if (r.isAdd) this.askAddCategory()
+    else this.commit(r.id)
   },
 
   onTouchCancel() {
-    if (!this._pressing) return
-    this._pressing = false
-    this.setFocus(this._pressFocusId)
-  },
-
-  step(dir) {
-    const next = RM.stepId(this._layout || [], this._focusId, dir, this.runningId())
-    if (!next) return
-    this.setFocus(next)
-    this._steps++
-    /* 档位反馈不再扭整个环：桌面那套是模拟"摸到金属表圈的磁点"，而手机上你是直接
-       抓着环拖，环自己扭一下反而像画错了。改成选中弧自己鼓一下（不动任何几何）。 */
-    this._kick = 1
-    this.animateTo('kick', 0, P.detentMs)
-    this.haptic()
-  },
-
-  setFocus(id) {
-    if (this._focusId === id) return
-    this._focusId = id
-    this.animateTo('push', id ? 1 : 0, 180)
-    this.renderCandidate()
-  },
-
-  haptic() {
-    if (!P.haptic) return
-    const now = Date.now()
-    if (this._lastHaptic && now - this._lastHaptic < 60) return
-    this._lastHaptic = now
-    try { wx.vibrateShort({ type: 'light', fail: () => {} }) } catch (e) { /* 模拟器会抛 */ }
+    if (!this._open) return
+    this._open = false
+    this.revealTo(false)
   },
 
   /* ---------- 六、确认：只有切换，没有停止 ---------- */
@@ -491,7 +440,7 @@ Page({
     const now = new Date()
     const entry = this._running
 
-    // 1) 先关旧的：库里对 (owner_id) WHERE end_time IS NULL 有唯一部分索引，同一时刻只能有一条进行中
+    // 先关旧的：库里对 (owner_id) WHERE end_time IS NULL 有唯一部分索引，同一时刻只能有一条进行中
     if (entry) {
       const dur = Math.max(1, Math.round((now.getTime() - new Date(entry.start_time).getTime()) / 1000))
       const { error } = await cloud.database.from('time_entries')
@@ -500,7 +449,6 @@ Page({
       if (error) { wx.showToast({ title: '切换失败，请重试', icon: 'none' }); return }
     }
 
-    // 2) 再开新的
     const { data, error } = await cloud.database.from('time_entries')
       .insert({ title: '', category_id: id === '__none__' ? null : id, start_time: now.toISOString() })
       .select()
@@ -510,12 +458,51 @@ Page({
         icon: 'none',
       })
       await this.refreshRunning()
+      this.rebuild()
       return
     }
     this._running = (data && data[0]) || null
-    this._candKey = null
     this.rebuild()
-    this.refreshTodayStats().then(() => { this._candKey = null; this.rebuild() })
+    this.refreshTodayStats().then(() => this.rebuild())
+  },
+
+  /* ---------- 七、新增分类 ---------- */
+  askAddCategory() {
+    wx.showModal({
+      title: '新增分类',
+      editable: true,
+      placeholderText: '分类名称，比如「写作」',
+      success: (res) => {
+        if (!res.confirm) return
+        const name = (res.content || '').trim()
+        if (!name) { wx.showToast({ title: '名称不能为空', icon: 'none' }); return }
+        this.createCategory(name)
+      },
+      fail: () => { wx.showToast({ title: '当前版本不支持直接新增，可去「设置」里加', icon: 'none' }) },
+    })
+  },
+
+  async createCategory(name) {
+    const cats = this._cats || []
+    if (cats.some((c) => c.name === name)) { wx.showToast({ title: '同名分类已存在', icon: 'none' }); return }
+    const color = SWATCH[cats.length % SWATCH.length]
+    const maxSort = cats.reduce((m, c) => Math.max(m, c.sort_order || 0), 0)
+    const { error } = await cloud.database.from('categories')
+      .insert({ name, color, sort_order: maxSort + 1 }).select()
+    if (error) {
+      wx.showToast({ title: error.code === '23505' ? '同名分类已存在' : '添加失败，请重试', icon: 'none' })
+      return
+    }
+    wx.showToast({ title: '已添加「' + name + '」', icon: 'success' })
+    await this.loadCategories()
+    this.rebuild()
+  },
+
+  haptic() {
+    const now = Date.now()
+    if (this._lastHaptic && now - this._lastHaptic < 80) return
+    this._lastHaptic = now
+    try { wx.vibrateShort({ type: 'light', fail: () => {} }) } catch (e) { /* 模拟器会抛 */ }
   },
 
   nameOf(id) {

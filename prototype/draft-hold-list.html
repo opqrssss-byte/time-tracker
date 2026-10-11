@@ -68,14 +68,16 @@
   .row.sel .du { font-size: 14px; opacity: .85; }
 
   /* 「新增」入口：跟在列表末尾，做成"空条"——和第 1 条同宽、没有颜色，一眼看出是可点的新增位 */
-  .addrow { padding-left: 20px; }
+  /* 「新增」和其他行走**同一套规则**：同样的高、同样的圆角、同样的长度算法
+     （它没有时长 → 长度落在最短那一档，与灰色幽灵条并列）。
+     之前做成满宽扁条，和旁边长度各异的彩色胶囊不是一个系统，所以突兀。 */
   .addbar {
     display: flex; align-items: center; height: 58px; border-radius: 999px;
-    padding: 0 22px; width: 335px; box-sizing: border-box;
-    background: rgba(255,255,255,.05);
+    padding: 0 20px 0 18px; box-sizing: border-box;
+    background: rgba(255,255,255,.08);
   }
-  .addbar .plus { font-size: 22px; font-weight: 300; color: #8a8f98; margin-right: 12px; line-height: 1; }
-  .addbar .txt { font-size: 18px; font-weight: 500; color: #8a8f98; }
+  .addbar .plus { font-size: 19px; font-weight: 400; color: rgba(255,255,255,.62); margin-right: 9px; line-height: 1; }
+  .addbar .txt { font-size: 19px; font-weight: 600; color: rgba(255,255,255,.62); }
 
   .caption { font-size: 12.5px; color: #6a6b6c; }
 
@@ -286,7 +288,7 @@
     // 末尾「新增」
     const add = document.createElement('div')
     add.className = 'row addrow'; add.dataset.id = '__add__'
-    add.innerHTML = '<div class="addbar"><span class="plus">＋</span><span class="txt">新增</span></div>'
+    add.innerHTML = '<div class="addbar"><span class="plus">＋</span><span class="txt">新增分类</span></div>'
     rowsEl.appendChild(add)
     sizeBars()
     layoutRows()
@@ -300,14 +302,18 @@
   function sizeBars() {
     const rows = [...rowsEl.children]
     const bars = rows.map((r) => r.querySelector('.bar'))   // 「新增」那格没有 .bar，保留占位对齐
+    const addBar = rowsEl.querySelector('.addbar')
     const needs = bars.map((b) => (b ? Math.ceil(b.scrollWidth) + 2 : 0))
-    const L0 = Math.max(60, ...needs)
+    // 「新增」也参与同一套长度规则：它没有时长 → share=0 → 长度就落在零点 L0（最短那一档）
+    const addNeed = addBar ? Math.ceil(addBar.scrollWidth) + 2 : 0
+    const L0 = Math.max(60, addNeed, ...needs)
     bars.forEach((bar, i) => {
       if (!bar) return
       const share = (secs[rows[i].dataset.id] || 0) / maxSec
       const w = L0 + (MAXW - L0) * share
       bar.style.width = Math.min(MAXW, Math.max(needs[i], w)) + 'px'
     })
+    if (addBar) addBar.style.width = L0 + 'px'
   }
 
   function layoutRows() {

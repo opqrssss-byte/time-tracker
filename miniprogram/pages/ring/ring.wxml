@@ -1,33 +1,15 @@
 <!--
-  环形模式（首页）：拖环旋转 + 松手确认，没有"停止"
+  环形模式（首页）· 整屏上下滑切换分类
 
-  ⚠️ 别在这个 canvas 上叠任何 view：canvas 是原生组件，反过来说压在它上面的 view 会把
-  那块区域的触摸**全部吃掉**（上一版把环心读数做成叠在上面的 view，结果整个环拖不动）。
-  所以盘、环、环心读数都画进 canvas；下面这些（候选条/引导/诊断）都在画布外的正常流里。
+  ⚠️ 这里只有一块**铺满整屏的 canvas**，页面上不压任何 view。
+  原因：小程序里 canvas 是原生组件、层级最高；反过来，压在它上面的普通 view 会把
+  那块区域的触摸**全部吃掉**（上一版把环心读数做成叠上去的 view，结果整个环拖不动）。
+  现在盘、环、环心读数、分类列表全都画在 canvas 里，页面上没有任何东西能截走触摸 ——
+  这也是"屏幕任意位置上下滑都能切换"能成立的前提。
 -->
-<view class="ring-page" style="padding-top:{{padTop}}px">
-
-  <view class="stage" style="width:{{canvasPx}}px;height:{{canvasPx}}px">
-    <canvas type="2d" id="ring" class="ring-canvas"
-      style="width:{{canvasPx}}px;height:{{canvasPx}}px"
-      disable-scroll="{{true}}"
-      bindtouchstart="onTouchStart"
-      catchtouchmove="onTouchMove"
-      bindtouchend="onTouchEnd"
-      bindtouchcancel="onTouchCancel"></canvas>
-  </view>
-
-  <view class="below">
-    <view class="cand {{showCand ? 'show' : ''}}">
-      <text class="cand-arrow">→</text>
-      <view class="dot" style="background:{{focusColor}}"></view>
-      <text class="cand-name">{{focusName}}</text>
-      <text class="cand-sep">·</text>
-      <text>{{focusDur}}</text>
-    </view>
-    <view class="hint {{showHint ? 'show' : ''}}">按住圆环拖动选分类，松手即切换</view>
-  </view>
-
-  <view class="diag" wx:if="{{diag}}">{{diag}}</view>
-
-</view>
+<canvas type="2d" id="ring" class="screen"
+  disable-scroll="{{true}}"
+  bindtouchstart="onTouchStart"
+  catchtouchmove="onTouchMove"
+  bindtouchend="onTouchEnd"
+  bindtouchcancel="onTouchCancel"></canvas>
