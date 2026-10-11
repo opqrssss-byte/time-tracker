@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>草稿 v2 · 全屏上下滑切换</title>
+<title>草稿 v3 · 荧光条列表（可做小组件）</title>
 <!--
-  UI 草稿 v2（按用户 10-11 反馈重做）：
-   · 切换时不再显示圆环 —— 列表直接覆盖表盘
-   · 每行一条独立荧光条，颜色=分类色，长度=今日时长（按当日最大值归一）
-   · 整个屏幕任意位置上下滑都能切换，不必按住表盘
+  UI 草稿 v3（按用户 10-11 第二轮反馈重做）
+   · 关键前提：**将来要做手机桌面小组件，沿用同一套交互与视觉** → 视觉必须按"小组件尺度"设计
+   · 每行本身就是那条荧光条（不再"细条挂在文字下面"），文字嵌在条内部
+   · 去掉几乎所有描边：靠大色块 + 柔和辉光拉开层次
+   · 列表底部加「新增」入口
   跑法：仓库根目录 python -m http.server 8899 → /prototype/draft-hold-list.html
 -->
 <link rel="icon" href="data:,">
@@ -20,150 +21,152 @@
     font: 400 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     color: #d7dae0; display: block; padding: 28px 0 60px;
   }
-  .wrap { display: flex; gap: 46px; align-items: flex-start; justify-content: center; flex-wrap: wrap; padding: 0 26px; }
-  .left { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .wrap { display: flex; gap: 42px; align-items: flex-start; justify-content: center; flex-wrap: wrap; padding: 0 26px; }
+  .left { display: flex; flex-direction: column; align-items: center; gap: 12px; }
   h1 { font-size: 16px; font-weight: 500; margin: 0 0 2px; color: #f0f2f5; }
 
   .phone {
     position: relative; width: 375px; height: 812px; flex: none;
     background: #0b0c0e; border-radius: 30px; overflow: hidden;
     transform: scale(.78); transform-origin: top center; margin-bottom: -178px;
-    box-shadow: 0 20px 60px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.07);
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
     touch-action: none; cursor: grab;
   }
   .phone.dragging { cursor: grabbing; }
-  .status {
-    position: absolute; top: 0; left: 0; right: 0; height: 44px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 12px; color: #6a6b6c; z-index: 3;
-  }
+  .status { position: absolute; top: 0; left: 0; right: 0; height: 44px;
+    display: flex; align-items: center; justify-content: center; font-size: 12px; color: #6a6b6c; z-index: 3; }
   canvas#ring { position: absolute; left: 50%; transform: translateX(-50%); }
 
-  /* —— 覆盖表盘的选项面板 —— */
-  .panel {
-    position: absolute; left: 50%; top: 50%; width: 335px;
-    transform: translate(-50%, -50%) scale(.94);
+  /* —— 列表：没有任何卡片、没有任何描边，条自己浮在屏幕上 —— */
+  .list {
+    position: absolute; left: 0; right: 0; top: 50%;
+    transform: translateY(-50%) scale(.95);
     opacity: 0; pointer-events: none;
     transition: opacity 200ms cubic-bezier(.22,1,.36,1), transform 200ms cubic-bezier(.22,1,.36,1);
     z-index: 2;
   }
-  .panel.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  .card {
-    position: relative; border-radius: 26px; overflow: hidden;
-    background: rgba(20,21,25,.93);
-    box-shadow: 0 26px 70px rgba(0,0,0,.62), 0 0 0 1px rgba(255,255,255,.075);
-    padding: 18px 0;
-  }
-  .band {
-    position: absolute; left: 10px; right: 10px; height: 64px; border-radius: 16px;
-    background: rgba(255,255,255,.06);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.085), inset 0 -1px 0 rgba(255,255,255,.045);
-    pointer-events: none;
-  }
+  .list.show { opacity: 1; transform: translateY(-50%) scale(1); }
   .rows { position: relative; }
-  .row {
-    height: 64px; display: flex; flex-direction: column; justify-content: center;
-    padding: 0 22px; will-change: opacity;
-  }
-  .top { display: flex; align-items: baseline; gap: 9px; margin-bottom: 8px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; align-self: center; }
-  .nm { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        font-size: 18px; font-weight: 400; color: #f4f4f6; }
-  .du { font-size: 12px; color: #6a6b6c; flex: none; font-variant-numeric: tabular-nums; }
-  .row.sel .nm { font-size: 24px; font-weight: 500; letter-spacing: -.3px; }
-  .row.sel .du { font-size: 13.5px; color: #a8adb8; }
-  .row.sel .dot { width: 10px; height: 10px; }
 
-  /* 荧光条：长度 = 今日时长（按当日最大值归一），颜色 = 分类色 */
-  .track { height: 6px; border-radius: 999px; background: rgba(255,255,255,.045); position: relative; }
-  .row.sel .track { height: 7px; }
-  .row.sel .bar { filter: brightness(1.15); }
+  .row {
+    height: 76px; display: flex; align-items: center;
+    padding-left: 20px; will-change: opacity;
+  }
   .bar {
-    position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px;
+    display: flex; align-items: center;
+    height: 58px; border-radius: 999px;
+    padding: 0 20px 0 18px;
+    box-sizing: border-box;
+    max-width: 335px;
     transition: none;
   }
-  .row:not(.sel) .bar { opacity: .55; }
+  .row.sel .bar { height: 68px; }
+  .nm { font-size: 19px; font-weight: 600; letter-spacing: -.1px; white-space: nowrap; }
+  .row.sel .nm { font-size: 24px; }
+  .du { font-size: 13px; font-weight: 500; opacity: .72; margin-left: 10px; white-space: nowrap;
+        font-variant-numeric: tabular-nums; }
+  .row.sel .du { font-size: 14px; opacity: .85; }
+
+  /* 「新增」入口：跟在列表末尾，做成"空条"——和第 1 条同宽、没有颜色，一眼看出是可点的新增位 */
+  .addrow { padding-left: 20px; }
+  .addbar {
+    display: flex; align-items: center; height: 58px; border-radius: 999px;
+    padding: 0 22px; width: 335px; box-sizing: border-box;
+    background: rgba(255,255,255,.05);
+  }
+  .addbar .plus { font-size: 22px; font-weight: 300; color: #8a8f98; margin-right: 12px; line-height: 1; }
+  .addbar .txt { font-size: 18px; font-weight: 500; color: #8a8f98; }
 
   .caption { font-size: 12.5px; color: #6a6b6c; }
 
-  /* —— 右侧规格 —— */
-  .notes { width: 390px; max-width: 92vw; }
+  /* —— 右侧：小组件预览 + 规格 —— */
+  .notes { width: 400px; max-width: 92vw; }
   .notes h2 { font-size: 13px; font-weight: 500; color: #6a6b6c; margin: 22px 0 8px; letter-spacing: .3px; }
   .notes h2:first-child { margin-top: 0; }
   .notes p, .notes li { font-size: 13.5px; line-height: 1.75; color: #a8adb8; margin: 0 0 6px; }
   .notes ul { margin: 0; padding-left: 18px; }
   .notes b { color: #e8ebf0; font-weight: 500; }
   .notes code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; color: #9ec1ff; }
+  .qa { margin-top: 10px; padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,.035); }
   .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px;
          background: rgba(79,140,255,.16); color: #8ab4ff; margin-right: 6px; }
-  .qa { margin-top: 10px; padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,.035);
-        border: 1px solid rgba(255,255,255,.06); }
-  .swatch { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; }
-  .swatch i { display: block; height: 5px; border-radius: 999px; }
+
+  /* 桌面壁纸 + 三个小组件，用来判断"摆在一起会不会格格不入" */
+  .home {
+    display: flex; gap: 14px; padding: 18px; border-radius: 22px;
+    background: linear-gradient(155deg, #2a2f3a 0%, #171a20 55%, #101216 100%);
+  }
+  .tile { width: 156px; height: 156px; border-radius: 26px; padding: 14px 16px; box-sizing: border-box;
+          background: rgba(28,30,36,.72); overflow: hidden; }
+  .tile .t1 { font-size: 12px; color: #8a8f98; }
+  .tile.big .big { font-size: 44px; font-weight: 300; letter-spacing: -1.5px; color: #f4f4f6; line-height: 1.15; }
+  .tile .sub { font-size: 12px; color: #8a8f98; margin-top: 2px; }
+  /* 我们的组件在桌面上的样子：同一套条，等比缩小 */
+  .wlist { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  .wrow { display: flex; align-items: center; height: 20px; }
+  .wbar { height: 20px; border-radius: 999px; display: flex; align-items: center; padding: 0 9px; box-sizing: border-box; }
+  .wnm { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+  .wt { font-size: 11px; color: #8a8f98; margin-top: 1px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="left">
-    <h1>草稿 v2 · 全屏上下滑，荧光条列表覆盖表盘</h1>
+    <h1>草稿 v3 · 整行荧光条（按小组件尺度设计）</h1>
     <div class="phone" id="phone">
       <div class="status">9:41</div>
       <canvas id="ring"></canvas>
-      <div class="panel" id="panel">
-        <div class="card">
-          <div class="band" id="band"></div>
-          <div class="rows" id="rows"></div>
-        </div>
+      <div class="list" id="list">
+        <div class="rows" id="rows"></div>
       </div>
     </div>
-    <div class="caption">在屏幕<b>任意位置</b>按住并上下拖动 —— 不用去够表盘</div>
+    <div class="caption">在屏幕<b>任意位置</b>按住上下拖 —— 滑到底部就是「新增」</div>
   </div>
 
   <div class="notes">
-    <h2>这版按你说的改了三处</h2>
-    <ul>
-      <li><b>切换时环整个退场</b>：列表直接盖住表盘，环淡到 12% 只留一点纵深，
-          不再"环和列表抢画面"</li>
-      <li><b>每行一条荧光条</b>：颜色 = 该分类色，<b>长度 = 今日时长</b>。
-          这样一屏就同时回答了两个问题——<b>选哪个</b>（大字）和<b>今天分布</b>（条长）</li>
-      <li><b>整屏可滑</b>：不用按住表盘，屏幕任何位置上下滑都能切换</li>
-    </ul>
+    <h2>为什么这版要按"小组件"重做</h2>
+    <p>你说它将来要放手机桌面、和别的小组件并排——那判断标准就变了：
+    上一版的<b>卡片 + 发丝描边 + 细荧光条</b>是"屏幕内 UI"的语言。
+    缩到小组件尺寸后，1px 描边会直接消失，细条会细成一根头发，整个东西就散架了。</p>
+    <p>桌面小组件要的是<b>大色块、粗字、少细节</b>。所以这版：<b>每一行本身就是那条荧光条</b>，
+    文字嵌在条内部，所有描边全部去掉。</p>
 
-    <h2>荧光条怎么算长度</h2>
-    <p>按<b>当日最大值归一</b>——最长的那条正好满格，其余按比例。用占全天的比例会更差：
-    分类一多每条都只剩一小截，看不出差别。今日 0 秒的留 3px 短桩（不画成空），
-    表示"这块还在，只是今天没动过"。</p>
-    <div class="swatch" id="swatchDemo"></div>
+    <h2>摆在一起是什么样</h2>
+    <div class="home" id="home"></div>
 
-    <h2>交互规则</h2>
+    <h2>这版改了什么</h2>
     <ul>
-      <li>屏幕<b>任意位置</b>按下 → 面板浮出，初始选中<b>正在计时那一类</b></li>
-      <li>上下滑 → 跟手连续滚动，每 <code>64px</code> 走一行；不足半行回弹</li>
-      <li><b>松手即提交</b>（切到选中那类），面板收起、环回来</li>
-      <li>按下后手指滑到屏幕任何地方都算，按<b>位移</b>算、不看位置</li>
-      <li>选中行变<b>大字 + 满亮荧光</b>，未选行降透明度、条也变暗</li>
-      <li>没有"停止"：切到别处 = 上一段结束</li>
+      <li><b>整行即荧光条</b>：条高 <code>58</code>（选中 <code>68</code>），圆角全圆，
+          文字（名称 + 时长）嵌在条内</li>
+      <li><b>条长 = 今日时长</b>（按当日最大值归一）；短到装不下文字时，
+          以"刚好装下文字"为下限，不会出现半个字</li>
+      <li><b>去掉全部描边</b>：没有卡片、没有发丝线、没有选中框。层次只靠
+          <b>色块 + 柔和辉光 + 尺寸差</b></li>
+      <li><b>选中行靠"变大变亮"</b>：名称 <code>19→24</code>、条 <code>58→68</code>、
+          未选行整条降到 <code>.5</code> 透明度——不再需要一条高亮带</li>
+      <li><b>字色跟条色走</b>：亮色条（如琥珀）自动用深字，暗色条用白字，
+          否则白字压在亮黄上根本看不清</li>
+      <li><b>末尾「新增」</b>：一条没有颜色的空条，排在列表最后，
+          滑到底选中它、松手即打开新增面板</li>
     </ul>
 
     <h2>视觉规格（375 宽基准）</h2>
     <ul>
-      <li>面板：宽 <code>335</code>、圆角 <code>26</code>、底 <code>rgba(20,21,25,.93)</code> +
-          发丝描边 + 大投影（浮起来才像"弹出"）</li>
-      <li>行高 <code>64</code>，露 5 行；选中行名称 <code>24px/500</code>，未选 <code>18px/400</code></li>
-      <li>荧光条：高 <code>6</code>（选中 7）、圆角全圆；辉光用<b>两层同色</b>——
-          贴边一层紧的（像灯管本体）+ 散开一层（像光晕），只用一层会像实心色块；未选行透明度 <code>.55</code></li>
-      <li>面板垂直<b>居中于屏幕</b>（不是贴盘心）：盘已退场，居中最稳</li>
-      <li>选中带：高 <code>64</code>、圆角 <code>16</code>、<code>rgba(255,255,255,.06)</code> +
-          上下内发丝线（和桌面组件同一套层级手段，不用投影）</li>
-      <li>进出场 <code>200ms</code>：淡入 + 从 0.94 放大到 1</li>
+      <li>行距 <code>76</code>，条最大宽 <code>335</code>，条内左右内距 <code>18/20</code></li>
+      <li>辉光：<code>0 0 22px 色·45%</code>（散光）+ <code>0 0 6px 色·70%</code>（贴边）。
+          只有一层会像实心色块，没有"荧光"感</li>
+      <li>未选行整条 <code>opacity .5</code>；再远的行 <code>.5→.26→0</code> 逐级淡出</li>
+      <li>「新增」条：<code>rgba(255,255,255,.05)</code> 底、灰字、与第一条同宽</li>
+      <li>列表进出场 <code>200ms</code>：淡入 + 0.95→1 放大；<b>环彻底退场</b>
+          （不保留半透明，否则大色块和一个幽灵环叠着会显脏）</li>
     </ul>
 
     <h2>待你拍板</h2>
     <div class="qa">
-      <p><span class="tag">A</span>荧光条要不要<b>显示具体数值轴</b>（比如右侧对齐的刻度）？现在只靠长度对比。</p>
-      <p><span class="tag">B</span>今日 0 秒的分类，要不要也列出来？现在<b>都列</b>（留 3px 短桩）。</p>
-      <p><span class="tag">C</span>"任意位置按下滑出"会不会太灵敏——<b>点一下屏幕也会弹</b>（松手即收起，算无操作）。要不要改成"按下后移动超过 8px 才弹"？</p>
-      <p><span class="tag">D</span>环还要不要保留？按这版它只剩"看一眼今天"的作用，而这件事列表已经做了。</p>
+      <p><span class="tag">A</span>选中行只靠"变大变亮"够不够显眼？要不要再加一条极细的白色底边？</p>
+      <p><span class="tag">B</span>「新增」是"滑到底选中再松手"，还是<b>直接点它</b>？后者更快但和"松手即提交"不一致。</p>
+      <p><span class="tag">C</span>桌面小组件里露几条？（预览里我放了 4 条 + 一条总时长）</p>
+      <p><span class="tag">D</span>环还留不留？现在它只在空闲时出现，切换时完全退场。</p>
     </div>
   </div>
 </div>
@@ -180,16 +183,20 @@
     { id: 'c5', name: '阅读', color: '#23B8D5' },
     { id: 'c6', name: '写作', color: '#F06EAA' },
   ]
-  const BYCAT = { c1: 9855, c2: 1800, c4: 7200, c5: 2400 }   // c1 含正在计时那段的实时时长
+  const BYCAT = { c1: 9855, c2: 1800, c4: 7200, c5: 2400 }
   const RUN_ID = 'c1'
 
   const G = { R: 86.4, SW: 17.6, GAP_VIS: 6.4, PLATE_R: 121.6 }
-  const CANVAS = 279.2
-  const CY = 280                      // 盘心距屏顶
-  const ROW_H = 64
-  const PANEL_W = 335
-  const PAD = 18
-  const BAR_W = PANEL_W - 2 * PAD     // 条的可用宽度
+  const CANVAS = 279.2, CY = 280
+  const ROW_H = 76, MAXW = 335
+
+  /* 字色跟条色走：只有确实偏亮的条（琥珀这类）才用深字，其余用白字。
+     阈值定在 .62 —— 再低会把中蓝/中绿也判成深字，整排字色就乱了。 */
+  function inkFor(hex) {
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16)
+    const L = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    return L > 0.62 ? 'rgba(12,14,18,.9)' : 'rgba(255,255,255,.97)'
+  }
 
   const phone = document.getElementById('phone')
   const cv = document.getElementById('ring')
@@ -198,6 +205,7 @@
 
   let laid = [], focusId = null, pos = 0, dimT = 0
   let secs = {}, maxSec = 1
+  const N_ADD = 1                       // 末尾「新增」占一格
 
   function build() {
     const running = { category_id: RUN_ID, start_time: new Date(Date.now() - 3.1e6).toISOString() }
@@ -221,33 +229,26 @@
   function draw() {
     const W = CANVAS, H = CANVAS, cx = W / 2, cy = H / 2
     ctx.clearRect(0, 0, W, H)
-    const a = 1 - 0.88 * dimT        // 面板浮出时环淡到 12%
+    /* 列表浮出时环**彻底退场**（不是淡到 12%）：大色块 + 一个幽灵环叠在一起会显脏，
+       而且小组件里根本不会有环。留一点余晖反而两边都不像。 */
+    const a = 1 - dimT
     if (a < 0.02) return
     ctx.save(); ctx.globalAlpha = a
-
     ctx.beginPath(); ctx.arc(cx, cy, G.PLATE_R, 0, Math.PI * 2)
     ctx.fillStyle = '#131417'; ctx.fill()
     ctx.beginPath(); ctx.arc(cx, cy, G.PLATE_R - .5, 0, Math.PI * 2)
-    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1; ctx.stroke()
-    ctx.beginPath(); ctx.arc(cx, cy, G.PLATE_R - 1.5, rad(202), rad(338))
-    ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 1.5; ctx.stroke()
-
+    ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 1; ctx.stroke()
     ctx.save(); ctx.translate(cx, cy)
     ctx.beginPath(); ctx.arc(0, 0, G.R, 0, Math.PI * 2)
-    ctx.lineWidth = G.SW; ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.stroke()
+    ctx.lineWidth = G.SW; ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.stroke()
     for (const it of laid) {
-      const focused = focusId === it.id
-      const active = !!it.active
       ctx.beginPath(); ctx.arc(0, 0, G.R, rad(it.drawStart), rad(it.drawEnd))
-      ctx.lineWidth = G.SW * (focused ? 1.35 : 1)
-      ctx.lineCap = 'round'
-      ctx.strokeStyle = it.ghost ? 'rgba(255,255,255,.14)' : it.color
-      if (focused || active) { ctx.shadowColor = RM.rgba(it.color, .6); ctx.shadowBlur = 7 }
-      else ctx.shadowBlur = 0
+      ctx.lineWidth = G.SW; ctx.lineCap = 'round'
+      ctx.strokeStyle = it.ghost ? 'rgba(255,255,255,.13)' : it.color
+      ctx.shadowColor = RM.rgba(it.color, .5); ctx.shadowBlur = it.ghost ? 0 : 8
       ctx.stroke(); ctx.shadowBlur = 0
     }
     ctx.restore()
-
     const run = CATS.find((c) => c.id === RUN_ID)
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.fillStyle = '#f4f4f6'; ctx.font = '600 40px sans-serif'
@@ -263,91 +264,106 @@
     ctx.restore()
   }
 
-  /* ---------- 列表 ---------- */
+  /* ---------- 列表：每行 = 一条荧光条 ---------- */
   const rowsEl = document.getElementById('rows')
-  const panelEl = document.getElementById('panel')
-  const bandEl = document.getElementById('band')
+  const listEl = document.getElementById('list')
 
   function buildRows() {
     rowsEl.innerHTML = ''
     laid.forEach((it) => {
-      const el = document.createElement('div')
-      el.className = 'row'; el.dataset.id = it.id
-      el.innerHTML =
-        '<div class="top"><span class="dot" style="background:' + (it.ghost ? '#4a4c52' : it.color) + '"></span>' +
-        '<span class="nm">' + it.name + '</span>' +
-        '<span class="du">' + (it.sec ? RM.fmtDurMin(it.sec) : '今天还没有') + '</span></div>' +
-        '<div class="track"><span class="bar"></span></div>'
-      rowsEl.appendChild(el)
+      const color = it.ghost ? '#5a5d64' : it.color
+      const row = document.createElement('div')
+      row.className = 'row'; row.dataset.id = it.id
+      row.innerHTML =
+        '<div class="bar" style="background:' + color +
+          ';color:' + inkFor(color) +
+          ';box-shadow:0 0 22px ' + RM.rgba(color, .45) + ',0 0 6px ' + RM.rgba(color, .7) + '">' +
+          '<span class="nm">' + it.name + '</span>' +
+          '<span class="du">' + (it.sec ? RM.fmtDurMin(it.sec) : '今天还没有') + '</span>' +
+        '</div>'
+      rowsEl.appendChild(row)
     })
-    bandEl.style.top = (PAD + 2 * ROW_H) + 'px'
+    // 末尾「新增」
+    const add = document.createElement('div')
+    add.className = 'row addrow'; add.dataset.id = '__add__'
+    add.innerHTML = '<div class="addbar"><span class="plus">＋</span><span class="txt">新增</span></div>'
+    rowsEl.appendChild(add)
+    sizeBars()
     layoutRows()
   }
 
+  /* 条宽编码今日时长，但**不能直接用 ratio×MAXW**：
+     文字嵌在条里，条至少得装得下字；而一天里前面那两类往往就占掉七八成，
+     直接按比例算的话后面几条全会撞在"装下文字"的下限上，长度就全一样了。
+     改用**仿射映射**：零点抬到 L0（= 最宽那行文字所需的宽），满格仍是 MAXW。
+     这样长短依旧随时长单调，但每条都留有可分辨的差异。 */
+  function sizeBars() {
+    const rows = [...rowsEl.children]
+    const bars = rows.map((r) => r.querySelector('.bar'))   // 「新增」那格没有 .bar，保留占位对齐
+    const needs = bars.map((b) => (b ? Math.ceil(b.scrollWidth) + 2 : 0))
+    const L0 = Math.max(60, ...needs)
+    bars.forEach((bar, i) => {
+      if (!bar) return
+      const share = (secs[rows[i].dataset.id] || 0) / maxSec
+      const w = L0 + (MAXW - L0) * share
+      bar.style.width = Math.min(MAXW, Math.max(needs[i], w)) + 'px'
+    })
+  }
+
   function layoutRows() {
-    const shift = (2 * ROW_H) - pos * ROW_H
-    rowsEl.style.transform = 'translateY(' + shift + 'px)'
+    const n = rowsEl.children.length
+    // 视口 5 行；选中行落在正中（第 3 格）
+    /* 让"选中那一格"落在屏幕垂直中心（列表容器本身已居中，索引 3 是它的中心格） */
+    rowsEl.style.transform = 'translateY(' + ((3 - pos) * ROW_H) + 'px)'
     const sel = Math.round(pos)
     ;[...rowsEl.children].forEach((el, i) => {
       const d = Math.abs(i - pos)
-      const o = d < .5 ? 1 : d < 1.5 ? .55 : d < 2.5 ? .26 : 0
+      const o = d < .5 ? 1 : d < 1.5 ? .5 : d < 2.5 ? .26 : 0
       el.style.opacity = o
       el.style.visibility = o === 0 ? 'hidden' : 'visible'
-      const isSel = i === sel
-      el.classList.toggle('sel', isSel)
-      const id = el.dataset.id
-      const color = (laid.find((z) => z.id === id) || {}).color || '#888'
-      const isGhost = (laid.find((z) => z.id === id) || {}).ghost
+      el.classList.toggle('sel', i === sel)
       const bar = el.querySelector('.bar')
-      const w = Math.max(3, (secs[id] || 0) / maxSec * BAR_W)
-      bar.style.width = Math.round(w) + 'px'
-      bar.style.background = color
-      // 灯管质感：一层贴边的紧辉光 + 一层散开的光晕（只有一层会像实心条）
-      bar.style.boxShadow = isGhost
-        ? 'none'
-        : '0 0 ' + (isSel ? 4 : 3) + 'px ' + RM.rgba(color, isSel ? .95 : .6) +
-          ', 0 0 ' + (isSel ? 18 : 10) + 'px ' + RM.rgba(color, isSel ? .6 : .3)
-      bar.style.opacity = isGhost ? .3 : 1
+      if (bar) {
+        const isSel = i === sel
+        bar.style.opacity = isSel ? 1 : .5
+        const id = el.dataset.id
+        const color = (laid.find((z) => z.id === id) || {}).color || '#5a5d64'
+        bar.style.boxShadow = isSel
+          ? '0 0 30px ' + RM.rgba(color, .55) + ',0 0 8px ' + RM.rgba(color, .8)
+          : '0 0 18px ' + RM.rgba(color, .3)
+      }
     })
     const selItem = laid[sel]
     if (selItem) { focusId = selItem.id; draw() }
+    else { focusId = null; draw() }   // 停在「新增」上：环不指向任何一块
   }
 
   /* ---------- 手势：整屏任意位置 ---------- */
   let down = null, downPos = 0
-  function pt(e) {
+  const pt = (e) => {
     const s = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e
-    return { x: s.clientX, y: s.clientY }
+    return { y: s.clientY }
   }
   function onDown(e) {
     if (down != null) return
-    const p = pt(e)
-    down = p.y; downPos = pos
+    down = pt(e).y; downPos = pos
     phone.classList.add('dragging')
-    panelEl.classList.add('show')
-    dimT = 1
-    layoutRows()
+    listEl.classList.add('show'); dimT = 1; layoutRows()
     if (e.preventDefault) e.preventDefault()
   }
   function onMove(e) {
     if (down == null) return
-    const p = pt(e)
-    const sc = phone.getBoundingClientRect().height / 812      // 草稿整体缩放过，要还原
-    const next = downPos + (down - p.y) / sc / ROW_H
-    pos = Math.max(0, Math.min(laid.length - 1, next))
+    const sc = phone.getBoundingClientRect().height / 812
+    const n = rowsEl.children.length
+    pos = Math.max(0, Math.min(n - 1, downPos + (down - pt(e).y) / sc / ROW_H))
     layoutRows()
     if (e.preventDefault) e.preventDefault()
   }
   function onUp() {
     if (down == null) return
-    down = null
-    pos = Math.round(pos)
-    // 位移不足半行 → 回弹到原位（等同"看一下就放"）
-    layoutRows()
+    down = null; pos = Math.round(pos); layoutRows()
     phone.classList.remove('dragging')
-    panelEl.classList.remove('show')
-    dimT = 0
-    draw()
+    listEl.classList.remove('show'); dimT = 0; draw()
   }
   phone.addEventListener('pointerdown', onDown)
   phone.addEventListener('pointermove', onMove)
@@ -355,17 +371,25 @@
   phone.addEventListener('pointercancel', onUp)
   phone.addEventListener('touchstart', (e) => { if (!window.PointerEvent) onDown(e) }, { passive: false })
   phone.addEventListener('touchmove', (e) => { if (!window.PointerEvent) onMove(e) }, { passive: false })
-  window.addEventListener('touchend', (e) => { if (!window.PointerEvent) onUp(e) }, { passive: false })
+  window.addEventListener('touchend', () => { if (!window.PointerEvent) onUp() }, { passive: false })
 
-  /* 右侧色板小样：演示"条长 = 时长" */
-  const sw = document.getElementById('swatchDemo')
-  sw.innerHTML = CATS.slice(0, 5).map((c, i) => {
-    const w = [120, 70, 30, 92, 54][i]
-    return '<span style="display:inline-flex;align-items:center;gap:6px">' +
-      '<i style="width:' + w + 'px;background:' + c.color + ';box-shadow:0 0 10px ' + RM.rgba(c.color, .7) + '"></i></span>'
-  }).join('')
+  /* ---------- 桌面小组件预览：同一套条，等比缩小 ---------- */
+  function renderHome() {
+    const el = document.getElementById('home')
+    const bars = laid.slice(0, 4).map((it) => {
+      const color = it.ghost ? '#5a5d64' : it.color
+      const w = Math.max(46, Math.min(124, (secs[it.id] || 0) / maxSec * 124))
+      return '<div class="wrow"><div class="wbar" style="width:' + w.toFixed(0) + 'px;background:' + color +
+        ';color:' + inkFor(color) + ';box-shadow:0 0 10px ' + RM.rgba(color, .6) + '">' +
+        '<span class="wnm">' + it.name + '</span></div></div>'
+    }).join('')
+    el.innerHTML =
+      '<div class="tile big"><div class="t1">现在</div><div class="big">2:44</div><div class="sub">工作 · 已记 9 小时</div></div>' +
+      '<div class="tile"><div class="t1">今天</div><div class="wlist">' + bars + '</div>' +
+      '<div class="wt">共 5 小时 52 分</div></div>'
+  }
 
-  build(); initCanvas(); buildRows(); draw()
+  build(); initCanvas(); buildRows(); renderHome(); draw()
 })()
 </script>
 </body>
