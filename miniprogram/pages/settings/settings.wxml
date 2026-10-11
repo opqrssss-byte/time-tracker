@@ -25,9 +25,25 @@
     <view class="card-text">统计图表和数据导出（CSV / Excel）请在网页版使用，数据实时互通。</view>
   </view>
 
+  <!-- 同步：本机模式是默认路径，配对是可选增强。手机端全程不需要邮箱。 -->
   <view class="card">
-    <view class="card-title">账号</view>
-    <view class="card-text">{{userEmail}}</view>
-    <button class="logout-btn" bindtap="signOut">退出登录</button>
+    <view class="card-title">同步</view>
+    <view class="sync-state {{mode === 'paired' ? 'on' : ''}}">{{modeText}}</view>
+
+    <block wx:if="{{mode === 'local'}}">
+      <view class="card-text">在电脑上用网页版生成 6 位配对码，填在这里就能把两台设备连起来。</view>
+      <view class="add-row">
+        <input class="add-input" type="number" maxlength="6" placeholder="6 位配对码"
+          value="{{pairCode}}" bindinput="onPairCode" />
+        <button class="btn-secondary add-btn" size="mini" bindtap="doPair" disabled="{{pairing}}">配对</button>
+      </view>
+    </block>
+
+    <block wx:else>
+      <view class="sync-actions">
+        <button class="btn-secondary" size="mini" bindtap="syncNow">立即同步</button>
+        <button class="btn-secondary" size="mini" bindtap="unpair">断开配对</button>
+      </view>
+    </block>
   </view>
 </view>

@@ -46,3 +46,12 @@
   font-size: 30rpx;
 }
 .logout-btn::after { border: none; }
+
+/* 同步卡片：本机模式是默认，配对是可选增强 */
+.sync-state {
+  font-size: 27rpx; font-weight: 500; color: #8a91a3;
+  margin-bottom: 16rpx;
+}
+.sync-state.on { color: #2FBF71; }
+.sync-actions { display: flex; flex-direction: row; gap: 20rpx; }
+.sync-actions button { flex: 1; }
