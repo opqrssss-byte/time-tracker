@@ -856,23 +856,30 @@ function updatePickOverlay() {
 
   /* 先写文字、量**文字**宽。不要量条本身：条宽是我们自己上一轮写进去的，
      再量它会把零点顶到满格、所有条被拉平成一样长（第一版就是这么错的）。 */
+  /* ⚠️ 量宽必须包 try：它只是"锦上添花"，一旦抛异常会把后面的**定位**带崩，
+     结果是所有条叠在中心、看着只剩一条（用户截图就是这个现象）。
+     位置是命脉，宽度是装饰，两者不能串在一起。 */
   let L0 = 80
-  pickRows.forEach((r) => {
-    const it = ringData.find((x) => x.id === r.id) || {}
-    r.nm.textContent = pickName(r.id)
-    r.du.textContent = r.id === '__add__' ? '' : ((it.sec || 0) > 0 ? fmtDurMin(it.sec) : '—')
-    const icon = r.id === '__add__' ? 13 : 0      // ＋ 是线条画的 11px 图标 + 2px 间距，
-                                                 // 不量进去「新增项目」就会被截成「新增…」
-    L0 = Math.max(L0, r.nm.scrollWidth + r.du.scrollWidth + icon + 7 + 22 + 2)
-  })
-  L0 = Math.min(L0, maxW)
-
+  /* maxSec 放在 try 外面：它只依赖 ringData，不会抛；而它一旦留在兜底值 1，
+     所有非零的条都会算成 share=1 → 全变成满宽，条长就彻底失去意义了 */
   const maxSec = Math.max(1, ...ringData.map((x) => x.sec || 0))
+  try {
+    pickRows.forEach((r) => {
+      const it = ringData.find((x) => x.id === r.id) || {}
+      r.nm.textContent = pickName(r.id)
+      if (r.du) r.du.textContent = (it.sec || 0) > 0 ? fmtDurMin(it.sec) : '—'
+      const icon = r.id === '__add__' ? 13 : 0    // ＋ 是线条画的 11px 图标 + 2px 间距
+      L0 = Math.max(L0, r.nm.scrollWidth + r.du.scrollWidth + icon + 7 + 22 + 2)
+    })
+    L0 = Math.min(L0, maxW)
+  } catch (err) {
+    L0 = Math.max(80, Math.min(L0, maxW))         // 量失败就退回保守值，继续往下走
+  }
   pickRows.forEach((r, i) => {
     let d = i - fi                       // 环形最短距离 → 到末位自然绕回开头
     if (d > n / 2) d -= n
     if (d < -n / 2) d += n
-    r.el.style.transform = 'translateY(calc(-50% + ' + (d * PICK_ROW_H) + 'px))'
+    r.el.style.top = 'calc(50% + ' + (d * PICK_ROW_H) + 'px)'   // 居中由 CSS 的 translateY(-50%) 负责
     const a = Math.abs(d)
     r.el.style.opacity = a < 0.5 ? 1 : a < 1.5 ? 0.55 : a < 2.5 ? 0.22 : 0
     r.el.style.visibility = a > 2.5 ? 'hidden' : 'visible'

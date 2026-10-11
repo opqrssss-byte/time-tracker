@@ -629,11 +629,16 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 #widget-pick-list { position: absolute; inset: 0; }
 
 .wp-row {
-  position: absolute; left: 8px; right: 8px; top: 50%;
+  position: absolute; left: 8px; right: 8px;
+  /* 位置用 top 表达（JS 写 calc(50% + Npx)），transform 只负责居中。
+     之前把偏移写进 transform 的 translateY(calc(-50% + Npx)) —— 百分比和像素混用的
+     calc 被判为无效值后**整条声明被静默丢弃**，于是所有行全叠在一起。
+     top 写 calc 组合是安全的，且 transform 不再承载动态值。 */
+  top: 50%; transform: translateY(-50%);
   display: flex; justify-content: flex-start;
-  /* translateY 由 JS 按"环形最短距离"写入 → 到末位自然绕回开头，是真循环而不是跳回 */
-  transition: transform 150ms cubic-bezier(.22,1,.36,1), opacity 150ms ease;
-  will-change: transform, opacity;
+  /* top 由 JS 按"环形最短距离"写入 → 到末位自然绕回开头，是真循环而不是跳回 */
+  transition: top 150ms cubic-bezier(.22,1,.36,1), opacity 150ms ease;
+  will-change: top, opacity;
 }
 .wp-bar {
   position: relative; display: flex; align-items: center; justify-content: space-between;
