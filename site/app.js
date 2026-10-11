@@ -786,9 +786,102 @@ function applyRingStateClasses() {
     }
   })
   if (confirmArcEl) confirmArcEl.classList.toggle('focused', !!focusCatId)
+  applyListStates()      // 列表形态挂在同一条状态通路上，避免环/列表各说各话
+}
+
+/* ============================================================================
+   桌面组件 · 列表形态（用户拍板："列表形式比现在的直观很多"）
+   ----------------------------------------------------------------------------
+   每行 = 一条荧光条，文字嵌在条内，**条长 = 今日时长**。点一行即切换。
+   为什么条长要用仿射映射：文字嵌在条里 → 条至少得装下文字；而一天的时长往往
+   集中在前两类，直接按 sec/maxSec × 满宽 的话后面几条会全撞在"装下文字"的
+   下限上、长度变得一模一样。所以零点抬到 L0（最宽那行文字所需的宽），满格仍是可用宽。
+
+   状态同步：悬停/选中/运行中**不各写一套**，统一挂在 applyRingStateClasses() 末尾，
+   由它转调 applyListStates() —— 两条通道（环/列表）永远指向同一个分类。
+   ========================================================================== */
+const WIDGET_LIST = true
+let listRows = []
+let listIds = []
+
+const wName = (id) => (id === '__none__' ? '未分类' : id === '__other__' ? '其他分类' : ((catById(id) || {}).name || ''))
+
+/* 条内文字色：亮底用深字、暗底用白字。阈值 .62 —— 再低会把中蓝/中绿也判成深字，整排就乱了 */
+function inkForBar(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''))
+  if (!m) return '#fff'
+  const L = (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)) / 255
+  return L > 0.62 ? 'rgba(12,14,18,.9)' : 'rgba(255,255,255,.97)'
+}
+
+function renderWidgetList(items) {
+  const box = $('widget-list')
+  if (!box) return
+  box.innerHTML = ''
+  listRows = []
+  listIds = []
+  items.forEach((it) => {
+    const row = document.createElement('div')
+    row.className = 'wl-row'
+    row.dataset.cat = it.id                       // 与环形扇区同属性 → 现有交互处理器直接生效
+    const bar = document.createElement('div')
+    bar.className = 'wl-bar'
+    bar.innerHTML = '<span class="wl-nm"></span><span class="wl-du"></span>'
+    row.appendChild(bar)
+    box.appendChild(row)
+    listRows.push({ el: row, bar, id: it.id, nm: bar.querySelector('.wl-nm'), du: bar.querySelector('.wl-du') })
+    listIds.push(it.id)
+  })
+  applyListStates()
+}
+
+/* 条宽：先量文字（此时条是自适应宽），再按"零点 L0 + 满格可用宽"的仿射映射定长 */
+function layoutListBars() {
+  const box = $('widget-list')
+  if (!box || !listRows.length) return
+  const avail = Math.max(120, box.clientWidth - 2)
+  /* 量的是**文字**的宽，不是条的宽：条宽上一轮已经被设成满格，再量它会得到 230，
+     零点被顶到满格 → 所有条全被拉平（第一版就是这个 bug）。
+     .wl-nm 带 overflow:hidden，其 scrollWidth 仍是整段文字的宽，正是我们要的。 */
+  const BAR_PAD = 13 * 2
+  const BAR_GAP = 8
+  let L0 = 96
+  listRows.forEach((r) => {
+    const need = Math.ceil(r.nm.scrollWidth) + Math.ceil(r.du.scrollWidth) + BAR_GAP + BAR_PAD + 2
+    L0 = Math.max(L0, need)
+  })
+  L0 = Math.min(L0, avail)
+  const maxSec = Math.max(1, ...ringData.map((it) => it.sec || 0))
+  listRows.forEach((r) => {
+    const it = ringData.find((x) => x.id === r.id) || {}
+    const share = Math.min(1, (it.sec || 0) / maxSec)
+    r.bar.style.width = Math.round(Math.min(avail, L0 + (avail - L0) * share)) + 'px'
+  })
+}
+
+function applyListStates() {
+  if (!WIDGET_LIST || !listRows.length) return
+  listRows.forEach((r) => {
+    const it = ringData.find((x) => x.id === r.id) || {}
+    const active = !!it.active
+    const ghost = !!it.ghost && !active
+    r.nm.textContent = wName(r.id)
+    r.du.textContent = (it.sec || 0) > 0 ? fmtDurMin(it.sec) : '—'
+    r.bar.style.background = ghost ? 'rgba(255,255,255,.10)' : (it.color || '#5a5d64')
+    r.bar.style.color = ghost ? '' : inkForBar(it.color)
+    r.el.classList.toggle('active', active)                       // 正在计时
+    r.el.classList.toggle('focused', focusCatId === r.id)         // 选中待确认
+    r.el.classList.toggle('hovered', !focusCatId && hoverCatId === r.id)
+    r.el.classList.toggle('ghost', ghost)
+    r.el.classList.toggle('dim', !!hoverCatId && !focusCatId && hoverCatId !== r.id)
+  })
+  layoutListBars()
 }
 
 function renderRing() {
+  const { items } = widgetSectors()
+  ringData = items
+  if (WIDGET_LIST) { renderWidgetList(items); return }   // 桌面组件走列表，不再画环
   const svg = $('widget-ring')
   if (!svg) return
   const NS = 'http://www.w3.org/2000/svg'
@@ -811,9 +904,7 @@ function renderRing() {
   })
   rot.appendChild(track)
 
-  const { items } = widgetSectors()
-  ringData = items
-  ringArcs = []
+  ringArcs = []        // items / ringData 已在函数开头取好（列表形态也要用）
   items.forEach((it) => {
     const c = document.createElementNS(NS, 'circle')
     setAttrs(c, {
@@ -849,6 +940,14 @@ function renderRing() {
 /* 每秒调用：形状没变就原地更新，形状变了（如幽灵变实心、出现"其他"）才重建 */
 function tickRing() {
   const { items } = widgetSectors()
+  if (WIDGET_LIST) {
+    // 列表形态：形状没变就原地更新（改字、改条长、改状态类），变了才重建 DOM
+    const same = listIds.length === items.length && items.every((it, i) => listIds[i] === it.id)
+    ringData = items
+    if (!same) renderWidgetList(items)
+    else applyListStates()
+    return
+  }
   const sameShape = items.length === ringArcs.length && items.every((it, i) => ringArcs[i].id === it.id)
   if (!sameShape) { renderRing(); return }
   ringData = items
@@ -1110,6 +1209,31 @@ $('widget-ring').addEventListener('mouseover', (e) => {
 })
 /* 鼠标离开只复原悬停，不取消滚轮选中（选中的倒计时与鼠标位置无关，由用户确认）。
    不依赖 mouseout 的 relatedTarget 判断，那样在元素被重绘替换时会漏事件（曾导致悬停永久卡死） */
+/* 列表形态的交互：点一行 = 切换（与扇区点击走同一条 onSectorClick 路径，语义不会分叉） */
+const widgetListEl = $('widget-list')
+if (widgetListEl) {
+  widgetListEl.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-cat]')
+    if (!t) return
+    const id = t.getAttribute('data-cat')
+    cancelConfirm()
+    clearFocus()
+    if (id === '__other__') { openOthersPanel(); return }
+    clearHover()
+    onSectorClick(id)
+  })
+  widgetListEl.addEventListener('mouseover', (e) => {
+    const t = e.target.closest('[data-cat]')
+    if (t) setHover(t.getAttribute('data-cat'))
+  })
+  widgetListEl.addEventListener('mouseleave', clearHover)
+  /* 滚轮改为滚动列表（环已退休，滚轮转环的那套不再适用）。
+     捕获阶段拦下，避免冒泡到 window 上的转环处理器。 */
+  widgetListEl.addEventListener('wheel', (e) => {
+    e.stopPropagation()
+    widgetListEl.scrollTop += e.deltaY
+  }, { passive: true, capture: true })
+}
 $('widget-ring-wrap').addEventListener('mouseleave', clearHover)
 $('widget-plate').addEventListener('mouseleave', clearHover)
 window.addEventListener('blur', () => { clearFocus(); clearHover() })

@@ -606,3 +606,64 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 .step-suggestion {
   color: #8a6d1a; font-size: 12.5px; margin-top: 3px; line-height: 1.5;
 }
+
+/* ============================================================================
+   桌面组件 · 列表形态（对应 app.js 里的 WIDGET_LIST）
+   ----------------------------------------------------------------------------
+   把圆盘换成「荧光条列表」——与小程序同一套视觉：每行本身就是一条荧光条，
+   文字嵌在条内，条长 = 今日时长。点一行即切换，比转环直观得多。
+   放在文件末尾是为了覆盖前面的环形样式（同权重时后者胜）。
+   ============================================================================ */
+body.widget-mode #widget-plate {
+  width: 100%; height: 100%; margin: 0;
+  padding: 14px 14px 10px;
+  /* 原来是一块 152×152 的圆形玻璃盘；列表形态改成铺满窗口的圆角面板。
+     窗口本身是透明矩形，所以**深色底板必须画在这里** —— 上一版误覆盖成 transparent，
+     整个组件就变成白底了。层次仍用「表面阶梯 + 发丝描边」，不加外投影
+     （外投影会被透明窗口的矩形裁出硬边，2026-09-30 踩过）。 */
+  border-radius: 18px;
+  display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
+  gap: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 46%),
+    var(--w-glass);
+  border: 1px solid var(--w-hairline-soft);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+#widget-ring-wrap { display: none !important; }      /* 环形退休，DOM 保留只为不破坏历史引用 */
+#widget-head { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: none; padding-top: 2px; }
+body.widget-mode #widget-time { font-size: 34px; letter-spacing: -0.8px; }
+body.widget-mode #widget-state { max-width: none; font-size: 12px; }
+body.widget-mode #widget-hover,
+body.widget-mode #widget-sub { font-size: 11px; margin-top: 1px; }
+body.widget-mode #widget-hover.hidden,
+body.widget-mode #widget-sub.hidden { display: none; }
+
+#widget-list {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column; gap: 6px;
+  overflow-y: auto;                    /* 分类多时滚轮滚动（原来滚轮是转环，现在环没了） */
+  scrollbar-width: none;
+  padding: 2px 0 4px;
+}
+#widget-list::-webkit-scrollbar { display: none; }
+
+.wl-row { display: flex; align-items: center; flex: none; cursor: pointer; }
+.wl-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; height: 38px; border-radius: 999px;
+  padding: 0 13px; box-sizing: border-box; min-width: 96px;
+  transition: filter 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+.wl-nm { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wl-du { font-size: 11px; font-weight: 500; opacity: .78; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* 正在计时：一道内描边，不用投影（Raycast 规范） */
+.wl-row.active .wl-bar { box-shadow: inset 0 0 0 1px rgba(255,255,255,.32); }
+.wl-row.focused .wl-bar,
+.wl-row.hovered .wl-bar { filter: brightness(1.2); box-shadow: 0 0 14px rgba(255,255,255,.16); }
+.wl-row.ghost .wl-bar { background: rgba(255,255,255,.10) !important; color: rgba(255,255,255,.58) !important; }
+.wl-row.dim .wl-bar { opacity: .45; }
+
+body.widget-mode #widget-add-cat { position: absolute; right: 12px; bottom: 8px; }
+/* 旧壳用 app-region 拖拽时，列表行要能点 */
+body.electron:not(.has-drag-ipc) #widget-plate .wl-row { -webkit-app-region: no-drag; }
