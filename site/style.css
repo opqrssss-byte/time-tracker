@@ -608,20 +608,20 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 }
 
 /* ============================================================================
-   桌面组件 · 切换态浮层（表盘常驻，滚轮一滚才出现）
+   桌面组件 · 切换态浮层
    ----------------------------------------------------------------------------
-   用户明确："桌面常驻还要这个表盘形式，只是在切换，也就是鼠标滚轮在上面滚动的时候
-   弹出荧光条，背景用模糊效果遮住表盘，同时几个荧光条滚动，最下方是新增项目，
-   可以循环滚动，停留并移开鼠标就会开始对应项目的计时。"
-   → 所以**不要**动常驻形态（圆形玻璃盘）；浮层是盖在它上面的一层。
+   · 方形遮罩铺满窗口（不再用 border-radius:50% 圈在 152 的圆盘里）——
+     那圈把条宽压到 130，也把上下两行裁掉了。改用方形后条能到 230+。
+   · 条做大：行高 46、字 15/12.5（原来是 32 / 12/10，太小不直观）
+   · 与小程序同一套视觉：每行即一条荧光条，文字嵌在条内，条长 = 今日时长
    ============================================================================ */
 #widget-pick {
-  position: absolute; inset: 0; border-radius: 50%;   /* 与盘同形，遮罩边缘不带方角 */
+  position: fixed; inset: 6px;
+  border-radius: 16px;
   overflow: hidden;
-  /* 模糊遮罩：把下面的表盘糊掉又留一点形，比纯色盖死更有层次（不用投影，避窗口硬边） */
-  background: rgba(10, 11, 13, 0.62);
-  -webkit-backdrop-filter: blur(9px) saturate(120%);
-  backdrop-filter: blur(9px) saturate(120%);
+  background: rgba(9, 10, 12, .74);
+  -webkit-backdrop-filter: blur(11px) saturate(125%);
+  backdrop-filter: blur(11px) saturate(125%);
   opacity: 1; transition: opacity 140ms ease;
 }
 #widget-pick.hidden { opacity: 0; pointer-events: none; }
@@ -629,11 +629,10 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 #widget-pick-list { position: absolute; inset: 0; }
 
 .wp-row {
-  position: absolute; left: 8px; right: 8px;
+  position: absolute; left: 14px; right: 14px;
   /* 位置用 top 表达（JS 写 calc(50% + Npx)），transform 只负责居中。
-     之前把偏移写进 transform 的 translateY(calc(-50% + Npx)) —— 百分比和像素混用的
-     calc 被判为无效值后**整条声明被静默丢弃**，于是所有行全叠在一起。
-     top 写 calc 组合是安全的，且 transform 不再承载动态值。 */
+     之前把偏移写进 transform 的 translateY(calc(-50% + Npx)) —— 百分比与像素混用的
+     calc 判为无效后**整条声明被静默丢弃**，于是所有行全叠在一起。 */
   top: 50%; transform: translateY(-50%);
   display: flex; justify-content: flex-start;
   /* top 由 JS 按"环形最短距离"写入 → 到末位自然绕回开头，是真循环而不是跳回 */
@@ -642,25 +641,26 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 }
 .wp-bar {
   position: relative; display: flex; align-items: center; justify-content: space-between;
-  gap: 7px; height: 32px; border-radius: 999px; padding: 0 11px;
-  box-sizing: border-box; min-width: 80px; overflow: hidden;
+  gap: 10px; height: 46px; border-radius: 999px; padding: 0 17px;
+  box-sizing: border-box; min-width: 96px; overflow: hidden;
 }
-.wp-nm { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wp-du { font-size: 10px; font-weight: 500; opacity: .78; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.wp-row.cur .wp-bar { box-shadow: 0 0 0 1px rgba(255, 255, 255, .30) inset, 0 0 12px rgba(255, 255, 255, .14); }
-.wp-row.cur .wp-nm { font-size: 13px; }
+.wp-nm { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wp-du { font-size: 12.5px; font-weight: 500; opacity: .8; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wp-row.cur .wp-nm { font-size: 16.5px; }
+.wp-row.cur .wp-bar { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .34), 0 0 18px rgba(255, 255, 255, .16); }
 
-/* 确认进度：贴在选中条底部的一条进度线（原来是环上的确认弧，被浮层遮住了搬到这里） */
+/* 确认进度：原来画在环上的弧（被浮层盖住），搬到选中条底部。
+   「新增项目」也能停留，所以它同样有这条进度线。 */
 .wp-prog {
-  position: absolute; left: 0; bottom: 0; height: 2px; width: 0%;
-  background: rgba(255, 255, 255, .92); border-radius: 0 2px 2px 0;
+  position: absolute; left: 0; bottom: 0; height: 3px; width: 0%;
+  background: rgba(255, 255, 255, .92); border-radius: 0 3px 3px 0;
 }
 
-/* 「新增项目」：无颜色的空条 + 一个线条画的 ＋（不用「＋」字符：全角且受字体回退影响） */
-.wp-add { background: rgba(255, 255, 255, .10); color: rgba(255, 255, 255, .66); }
-.wp-plus { position: relative; width: 11px; height: 11px; flex: none; margin-right: 2px; }
+/* 「新增项目」：无颜色的空条 + 线条画的 ＋（不用「＋」字符：全角且受字体回退影响） */
+.wp-add { background: rgba(255, 255, 255, .10); color: rgba(255, 255, 255, .68); }
+.wp-plus { position: relative; width: 14px; height: 14px; flex: none; margin-right: 2px; }
 .wp-plus::before, .wp-plus::after {
   content: ''; position: absolute; background: currentColor; border-radius: 1px;
 }
-.wp-plus::before { left: 0; top: 4.5px; width: 11px; height: 2px; }
-.wp-plus::after { left: 4.5px; top: 0; width: 2px; height: 11px; }
+.wp-plus::before { left: 0; top: 6px; width: 14px; height: 2px; }
+.wp-plus::after { left: 6px; top: 0; width: 2px; height: 14px; }

@@ -804,7 +804,7 @@ function applyRingStateClasses() {
    循环滚动：每行相对选中行的位移用**环形最短距离**算，滚到末位自然绕回开头
    （而不是跳回），且无论多少分类都只露出附近 5 行。
    ========================================================================== */
-const PICK_ROW_H = 38
+const PICK_ROW_H = 52      // 条高 46 + 间隙 6；配合"方形遮罩"把条做大做直观
 
 const pickName = (id) => (id === '__none__' ? '未分类' : id === '__other__' ? '其他分类'
   : id === '__add__' ? '新增项目' : ((catById(id) || {}).name || ''))
@@ -868,8 +868,8 @@ function updatePickOverlay() {
       const it = ringData.find((x) => x.id === r.id) || {}
       r.nm.textContent = pickName(r.id)
       if (r.du) r.du.textContent = (it.sec || 0) > 0 ? fmtDurMin(it.sec) : '—'
-      const icon = r.id === '__add__' ? 13 : 0    // ＋ 是线条画的 11px 图标 + 2px 间距
-      L0 = Math.max(L0, r.nm.scrollWidth + r.du.scrollWidth + icon + 7 + 22 + 2)
+      const icon = r.id === '__add__' ? 16 : 0    // ＋ 是线条画的 14px 图标 + 2px 间距
+      L0 = Math.max(L0, r.nm.scrollWidth + r.du.scrollWidth + icon + 10 + 34 + 2)
     })
     L0 = Math.min(L0, maxW)
   } catch (err) {
@@ -1011,19 +1011,27 @@ function clearFocus() {
 }
 
 /* 沿环（按绘制顺序）步进一格，首尾循环 */
+/* 滚轮可停留的项 = 环上的分类 + 末位「新增项目」。
+   以前只用 ringData，而「新增」只活在浮层里 → **滚轮永远滚不到它、只能点**，
+   所以它没法"停留确认"（用户报的正是这个）。
+   把「新增」并进这条序列后，停顿 900ms 或点击都会走 finishConfirm 里的
+   `id === '__add__'` 分支打开新增面板，与其他项完全同构。 */
+function focusableIds() { return ringData.map((x) => x.id).concat('__add__') }
+
 function stepFocus(dir) {
-  const n = ringData.length
+  const ids = focusableIds()
+  const n = ids.length
   if (!n) return
-  let idx = focusCatId ? ringData.findIndex((x) => x.id === focusCatId) : -1
+  let idx = focusCatId ? ids.indexOf(focusCatId) : -1
   if (idx < 0) {
-    // 首次滚动：优先从"正在计时的分类"起跳一步；空闲则从 12 点（顺时针）/ 末段（逆时针）进入
+    // 首次滚动：优先从"正在计时的分类"起跳一步；空闲则从第一条（顺时针）/ 末条（逆时针）进入
     const rid = runningEntry ? (runningEntry.category_id || '__none__') : null
-    const ri = rid ? ringData.findIndex((x) => x.id === rid) : -1
+    const ri = rid ? ids.indexOf(rid) : -1
     idx = ri >= 0 ? mod(ri + dir, n) : (dir > 0 ? 0 : n - 1)
   } else {
     idx = mod(idx + dir, n)
   }
-  setFocus(ringData[idx].id)
+  setFocus(ids[idx])
   kickDetent(dir)
   restartConfirmTimer()
 }
