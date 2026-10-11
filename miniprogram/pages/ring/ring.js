@@ -11,8 +11,8 @@
 
    手势：按下(任意处) → 列表浮出 → 上下滑切换 → 松手提交；滑到底可选中「新增分类」
    ========================================================================== */
-const { cloud } = require('../../utils/cloud')
-const { ensureSession } = require('../../utils/util')
+const store = require('../../utils/store')
+const sync = require('../../utils/sync')
 const RM = require('../../utils/ring')
 
 const DEFAULT_CATEGORIES = [
@@ -58,18 +58,32 @@ Page({
 
   onReady() { this.initCanvas() },
 
+  /* 免登录：这里**不再有任何登录守卫**。数据一律从本机 store 读；
+     想同步的时候（配对过）sync 才真的发网络，没配对就全程 no-op。 */
   async onShow() {
-    const session = await ensureSession()
-    if (!session) return
-    await this.loadCategories()
-    await this.refreshRunning()
-    await this.refreshTodayStats()
+    await store.ready()
+    this.refreshFromStore()
     this.startTicker()
-    this.rebuild()
+    if (!this._unsub) this._unsub = store.subscribe(() => this.refreshFromStore())
+    if (!this._modeUnsub) this._modeUnsub = store.onModeChange(() => this.refreshFromStore())
+    sync.syncSoon(0)
   },
 
   onHide() { this.clearTimers() },
-  onUnload() { this.clearTimers() },
+  onUnload() {
+    this.clearTimers()
+    if (this._unsub) { this._unsub(); this._unsub = null }
+    if (this._modeUnsub) { this._modeUnsub(); this._modeUnsub = null }
+  },
+
+  /* store 是唯一真相：这三个字段名与绘制代码完全对齐，所以画的部分一行不用改 */
+  refreshFromStore() {
+    if (!this._K) return
+    this._cats = store.getCategories()
+    this._running = store.getRunning()
+    this._byCat = store.todayByCat()
+    this.rebuild()
+  },
 
   clearTimers() {
     ;['_ticker', '_breathe', '_a_reveal'].forEach((k) => {
@@ -108,40 +122,9 @@ Page({
       })
   },
 
-  /* ---------- 二、数据 ---------- */
-  async loadCategories() {
-    let { data, error } = await cloud.database
-      .from('categories').select('*').order('sort_order', { ascending: true })
-    if (error) { wx.showToast({ title: '分类加载失败', icon: 'none' }); return }
-    if (!data || data.length === 0) {
-      const seeded = await cloud.database.from('categories').insert(DEFAULT_CATEGORIES).select()
-      if (!seeded.error && seeded.data && seeded.data.length) data = seeded.data
-    }
-    this._cats = data || []
-  },
-
-  async refreshRunning() {
-    const { data, error } = await cloud.database
-      .from('time_entries').select('*').is('end_time', null).maybeSingle()
-    if (error) return
-    this._running = data || null
-  },
-
-  async refreshTodayStats() {
-    const start = new Date(); start.setHours(0, 0, 0, 0)
-    const { data, error } = await cloud.database.from('time_entries')
-      .select('category_id,duration_sec,start_time')
-      .gte('start_time', start.toISOString())
-      .not('end_time', 'is', null)
-      .order('start_time', { ascending: false }).limit(500)
-    if (error) return
-    const byCat = {}
-    ;(data || []).forEach((e) => {
-      const k = e.category_id || 'none'
-      byCat[k] = (byCat[k] || 0) + Math.floor(e.duration_sec || 0)
-    })
-    this._byCat = byCat
-  },
+  /* ---------- 二、数据 ----------
+     原本这里有三个直连云端的方法（loadCategories / refreshRunning / refreshTodayStats），
+     现在全部由 store 承担（它保证"至多一条进行中"、todayByCat 与云端同口径）。 */
 
   startTicker() {
     if (this._ticker) clearInterval(this._ticker)
@@ -462,33 +445,17 @@ Page({
       return
     }
     this.haptic()
-    const now = new Date()
-    const entry = this._running
-
-    // 先关旧的：库里对 (owner_id) WHERE end_time IS NULL 有唯一部分索引，同一时刻只能有一条进行中
-    if (entry) {
-      const dur = Math.max(1, Math.round((now.getTime() - new Date(entry.start_time).getTime()) / 1000))
-      const { error } = await cloud.database.from('time_entries')
-        .update({ end_time: now.toISOString(), duration_sec: dur, updated_at: now.toISOString() })
-        .eq('id', entry.id)
-      if (error) { wx.showToast({ title: '切换失败，请重试', icon: 'none' }); return }
-    }
-
-    const { data, error } = await cloud.database.from('time_entries')
-      .insert({ title: '', category_id: id === '__none__' ? null : id, start_time: now.toISOString() })
-      .select()
-    if (error) {
-      wx.showToast({
-        title: error.code === '23505' ? '另一台设备正在计时' : '开始失败，请重试',
-        icon: 'none',
-      })
-      await this.refreshRunning()
-      this.rebuild()
+    /* 写路径只有一条：**先写本地**（store 保证"关旧+开新"在同一时刻、无空档），
+       再由 sync 去对齐远端。不做本地/云端双写 —— 那样两边的 id 与时间戳容易分叉。
+       配对态下远端对齐失败也不影响使用：下次 sync 时 merge 会把差异重新算进 ops 重推。 */
+    const r = store.switchTo(id === '__none__' ? null : id)
+    if (!r.ok) {
+      if (r.error === 'same') return
+      wx.showToast({ title: '切换失败，请重试', icon: 'none' })
       return
     }
-    this._running = (data && data[0]) || null
-    this.rebuild()
-    this.refreshTodayStats().then(() => this.rebuild())
+    this.refreshFromStore()
+    sync.syncSoon()
   },
 
   /* ---------- 七、新增分类 ---------- */
@@ -510,17 +477,14 @@ Page({
   async createCategory(name) {
     const cats = this._cats || []
     if (cats.some((c) => c.name === name)) { wx.showToast({ title: '同名分类已存在', icon: 'none' }); return }
-    const color = SWATCH[cats.length % SWATCH.length]
-    const maxSort = cats.reduce((m, c) => Math.max(m, c.sort_order || 0), 0)
-    const { error } = await cloud.database.from('categories')
-      .insert({ name, color, sort_order: maxSort + 1 }).select()
-    if (error) {
-      wx.showToast({ title: error.code === '23505' ? '同名分类已存在' : '添加失败，请重试', icon: 'none' })
+    const r = store.addCategory(name, SWATCH[cats.length % SWATCH.length])
+    if (!r.ok) {
+      wx.showToast({ title: r.error === 'duplicate_name' ? '同名分类已存在' : '添加失败，请重试', icon: 'none' })
       return
     }
     wx.showToast({ title: '已添加「' + name + '」', icon: 'success' })
-    await this.loadCategories()
-    this.rebuild()
+    this.refreshFromStore()
+    sync.syncSoon()
   },
 
   haptic() {
