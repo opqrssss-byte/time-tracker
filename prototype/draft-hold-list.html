@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>草稿 · 按住圆环浮出列表</title>
+<!--
+  UI 草稿：按住圆盘 → 盘下方浮出一列大字列表 → 手指上下滑动切换 → 松手提交
+  这是用来拍板视觉与交互观感的草稿，不是产品文件。
+  跑法：仓库根目录 python -m http.server 8899 → /prototype/draft-hold-list.html
+-->
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="prototype.css">
+<style>
+  html, body { overflow: auto; }
+  body {
+    background: #0e1014; margin: 0;
+    font: 400 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #d7dae0; display: block; padding: 28px 0 60px;
+  }
+  .wrap { display: flex; gap: 46px; align-items: flex-start; justify-content: center; flex-wrap: wrap; padding: 0 26px; }
+  .left { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  h1 { font-size: 16px; font-weight: 500; margin: 0 0 2px; color: #f0f2f5; }
+
+  /* —— 手机（375×812，整体缩放以便整屏可见）—— */
+  .phone {
+    position: relative; width: 375px; height: 812px; flex: none;
+    background: #0b0c0e; border-radius: 30px; overflow: hidden;
+    transform: scale(.78); transform-origin: top center;
+    margin-bottom: -178px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.07);
+  }
+  .status {
+    position: absolute; top: 0; left: 0; right: 0; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: #6a6b6c;
+  }
+  canvas#ring { position: absolute; left: 50%; top: 0; transform: translateX(-50%); }
+
+  /* —— 浮出的列表卡 —— */
+  .listwrap {
+    position: absolute; left: 50%; width: 300px;
+    transform: translateX(-50%) translateY(10px) scale(.96);
+    opacity: 0; pointer-events: none;
+    transition: opacity 180ms cubic-bezier(.22,1,.36,1), transform 180ms cubic-bezier(.22,1,.36,1);
+  }
+  .listwrap.show { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  .card {
+    position: relative; border-radius: 22px; overflow: hidden;
+    background: rgba(21,22,26,.94);
+    box-shadow: 0 18px 50px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.07);
+    padding: 16px 0;
+  }
+  .band {
+    position: absolute; left: 12px; right: 12px; height: 48px; border-radius: 13px;
+    background: rgba(255,255,255,.07);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.09), inset 0 -1px 0 rgba(255,255,255,.05);
+    pointer-events: none;
+  }
+  .rows { position: relative; }
+  .row {
+    height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 24px;
+    will-change: opacity;
+  }
+  .row .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .row .nm { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .du { font-size: 12px; color: #6a6b6c; flex: none; }
+  .row .nm { font-size: 17px; font-weight: 400; color: #f4f4f6; }
+  .row.sel .nm { font-size: 22px; font-weight: 500; letter-spacing: -.2px; }
+  .row.sel .du { font-size: 13px; color: #9c9c9d; }
+  .row:not(.sel) .du { display: none; }
+  .row:not(.sel) .dot { opacity: .55; transform: scale(.8); }
+
+  .caption { font-size: 12.5px; color: #6a6b6c; }
+
+  /* —— 右侧规格说明 —— */
+  .notes { width: 380px; max-width: 92vw; }
+  .notes h2 { font-size: 13px; font-weight: 500; color: #6a6b6c; margin: 22px 0 8px; letter-spacing: .3px; }
+  .notes h2:first-child { margin-top: 0; }
+  .notes p, .notes li { font-size: 13.5px; line-height: 1.75; color: #a8adb8; margin: 0 0 6px; }
+  .notes ul { margin: 0; padding-left: 18px; }
+  .notes b { color: #e8ebf0; font-weight: 500; }
+  .notes code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; color: #9ec1ff; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px;
+         background: rgba(79,140,255,.16); color: #8ab4ff; margin-right: 6px; }
+  .qa { margin-top: 10px; padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,.035);
+        border: 1px solid rgba(255,255,255,.06); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="left">
+    <h1>草稿 · 按住圆盘 → 浮出列表 → 上下滑选</h1>
+    <div class="phone" id="phone">
+      <div class="status">9:41</div>
+      <canvas id="ring"></canvas>
+      <div class="listwrap" id="listwrap">
+        <div class="card">
+          <div class="band" id="band"></div>
+          <div class="rows" id="rows"></div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">在盘上按住并上下拖动试试 —— 手指不用挪到列表上</div>
+  </div>
+
+  <div class="notes">
+    <h2>这一版想解决什么</h2>
+    <p>你说"总会不清楚当前选中了哪个"——根因是<b>环上的弧太细、颜色再多也读不出"这是哪个分类"</b>。
+    所以把"选"和"看"拆开：<b>环继续负责"看今天"</b>（各分类占比一眼可见），
+    <b>列表负责"选"</b>（大字、明确、只有一个答案）。</p>
+
+    <h2>为什么列表在盘的下面，而不是浮在盘里</h2>
+    <p>按住环的时候，<b>指尖本身就压在盘缘上</b>。列表若放盘内：要么被自己的手指挡住，
+    要么得小于盘内孔（约 155px），那字就不可能大。放到盘下方之后——盘完整可见、
+    手指压不到列表、字可以放到 22px，而且手指在盘上竖滑时列表就在它正下方，<b>视线不用移动</b>。</p>
+
+    <h2>交互规则</h2>
+    <ul>
+      <li><b>按住盘</b>（环上或盘内任意处）→ 列表浮出，<b>初始选中"手指下那一块"</b></li>
+      <li><b>上下滑动</b>任意距离即可切换，跟手连续滚动，<b>每 48px 走一行</b></li>
+      <li><b>松手即提交</b>；滑动不足半行则回弹，等同于"轻点它"</li>
+      <li>按下后手指<b>可以在屏幕任意处滑</b>，不必粘在盘上（按位移算，不看位置）</li>
+      <li>选中哪一行，环上那块<b>同步高亮</b>——两个通道永远指向同一个分类</li>
+      <li>没有"停止"：切到别处＝上一段结束</li>
+    </ul>
+
+    <h2>视觉规格（375 宽基准）</h2>
+    <ul>
+      <li>卡片：宽 <code>300</code>、圆角 <code>22</code>、底 <code>rgba(21,22,26,.94)</code>、
+          发丝描边 + 上浮投影（浮起来才像"弹出"）</li>
+      <li>选中行：名称 <code>22px / 500</code>，右侧今日时长 <code>13px</code></li>
+      <li>未选行：名称 <code>17px / 400</code>、透明度降到 <code>.52</code> 与 <code>.24</code> 逐级淡出
+          （更远的行直接不画，避免出现"半截字"）</li>
+      <li>选中带：高 <code>48</code>、圆角 <code>13</code>、<code>rgba(255,255,255,.07)</code> +
+          上下各一道内发丝线（比投影更克制，和桌面组件同一套层级手段）</li>
+      <li>进出场：<code>180ms</code> 淡入 + 上移 10px + 从 0.96 放大到 1</li>
+      <li>列表浮出时环降到 <code>35%</code> 亮度：让位，但不消失（还留着"今天"的上下文）</li>
+    </ul>
+
+    <h2>待你拍板</h2>
+    <div class="qa">
+      <p><span class="tag">A</span>列表要露出一行到五行？现在露 <b>5 行</b>（上下各两行淡出）——行数多则气势足，少则盘更突出。</p>
+      <p><span class="tag">B</span>未选行要不要显示今日时长？现在<b>只显示选中行的</b>，未选行只留名称，更干净。</p>
+      <p><span class="tag">C</span>列表位置固定在盘下方，还是<b>跟着手指避让</b>（手指在下半屏就浮到盘上方）？固定更稳、可预期。</p>
+      <p><span class="tag">D</span>环要不要保留"拖环旋转"这条老路？我倾向<b>去掉</b>——两条手势并存会互相打架。</p>
+    </div>
+  </div>
+</div>
+
+<script src="ring-geometry.js"></script>
+<script>
+(function () {
+  const RM = window.RingModel
+  const CATS = [
+    { id: 'c1', name: '工作', color: '#4F8CFF' },
+    { id: 'c2', name: '学习', color: '#9B6DFF' },
+    { id: 'c3', name: '运动', color: '#2FBF71' },
+    { id: 'c4', name: '生活', color: '#F2A93B' },
+    { id: 'c5', name: '阅读', color: '#23B8D5' },
+    { id: 'c6', name: '写作', color: '#F06EAA' },
+  ]
+  const BYCAT = { c1: 3600, c2: 1800, c4: 7200, c5: 2400 }
+  const RUN_ID = 'c4'
+
+  const K = 1
+  const G = { R: 86.4 * K, SW: 17.6 * K, GAP_VIS: 6.4 * K, PLATE_R: 121.6 * K }
+  const CANVAS = 279.2 * K
+  const RING_TOP = 190                 // 盘心距屏顶
+  const ROW_H = 48
+
+  const phone = document.getElementById('phone')
+  const cv = document.getElementById('ring')
+  const ctx = cv.getContext('2d')
+  let DPR = Math.min(window.devicePixelRatio || 1, 3)
+  const dpr = DPR
+
+  let laid = [], focusId = null, listOpen = false, pos = 0, selIndex = 0
+  let dim = 0                          // 环的亮度（列表浮出时降到 .35）
+
+  function build() {
+    const running = { category_id: RUN_ID, start_time: new Date(Date.now() - 3720e3).toISOString() }
+    const elapsed = RM.elapsedSec(running, Date.now())
+    const items = RM.sectors(CATS, BYCAT, running, elapsed, { ghostDeg: 4.5, maxSectors: 7 })
+    laid = RM.layout(items, { R: G.R, SW: G.SW, GAP_VIS: G.GAP_VIS })
+    selIndex = Math.max(0, laid.findIndex((x) => x.id === RUN_ID))
+  }
+
+  function initCanvas() {
+    cv.width = Math.round(CANVAS * dpr)
+    cv.height = Math.round(CANVAS * dpr)
+    cv.style.width = CANVAS + 'px'
+    cv.style.height = CANVAS + 'px'
+    cv.style.top = (RING_TOP - CANVAS / 2) + 'px'
+    ctx.scale(dpr, dpr)
+  }
+
+  const rad = (d) => (d - 90) * Math.PI / 180
+
+  function draw() {
+    const W = CANVAS, H = CANVAS, cx = W / 2, cy = H / 2
+    ctx.clearRect(0, 0, W, H)
+
+    // 盘
+    ctx.beginPath(); ctx.arc(cx, cy, G.PLATE_R, 0, Math.PI * 2)
+    ctx.fillStyle = '#131417'; ctx.fill()
+    ctx.beginPath(); ctx.arc(cx, cy, G.PLATE_R - .5, 0, Math.PI * 2)
+    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1; ctx.stroke()
+    ctx.beginPath(); ctx.arc(cx, cy, G.PLATE_R - 1.5, rad(202), rad(338))
+    ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 1.5; ctx.stroke()
+
+    // 环（列表浮出时整体降亮）
+    const a = 1 - 0.65 * dim
+    ctx.save(); ctx.globalAlpha = a; ctx.translate(cx, cy)
+    ctx.beginPath(); ctx.arc(0, 0, G.R, 0, Math.PI * 2)
+    ctx.lineWidth = G.SW; ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.stroke()
+
+    for (const it of laid) {
+      const focused = focusId === it.id
+      const active = !!it.active
+      ctx.beginPath()
+      ctx.arc(0, 0, G.R, rad(it.drawStart), rad(it.drawEnd))
+      ctx.lineWidth = G.SW * (focused ? 1.35 : 1)
+      ctx.lineCap = 'round'
+      ctx.strokeStyle = it.ghost ? 'rgba(255,255,255,.14)' : it.color
+      if (focused || active) {
+        ctx.shadowColor = RM.rgba(it.color, .6)
+        ctx.shadowBlur = 7 * (focused ? 1.15 : 1)
+      } else { ctx.shadowBlur = 0 }
+      ctx.stroke(); ctx.shadowBlur = 0
+    }
+    ctx.restore()
+
+    // 环心读数（只在列表收起时显眼）
+    const run = RUN_ID ? CATS.find((c) => c.id === RUN_ID) : null
+    ctx.globalAlpha = 1 - 0.55 * dim
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#f4f4f6'; ctx.font = '600 40px sans-serif'
+    ctx.fillText(RM.fmtMS(3720), cx, cy - 11)
+    ctx.font = '500 15px sans-serif'
+    const nm = run ? run.name : '空闲'
+    const tw = ctx.measureText(nm).width
+    const startX = cx - (8 + 8 + tw) / 2
+    ctx.beginPath(); ctx.arc(startX + 4, cy + 21, 4, 0, Math.PI * 2)
+    ctx.fillStyle = run ? run.color : '#5c5d60'; ctx.fill()
+    ctx.textAlign = 'left'; ctx.fillStyle = '#cdcdcd'
+    ctx.fillText(nm, startX + 16, cy + 21)
+    ctx.globalAlpha = 1
+  }
+
+  /* ---------- 列表 ---------- */
+  const rowsEl = document.getElementById('rows')
+  const wrapEl = document.getElementById('listwrap')
+  const bandEl = document.getElementById('band')
+
+  function buildRows() {
+    rowsEl.innerHTML = ''
+    laid.forEach((it, i) => {
+      const el = document.createElement('div')
+      el.className = 'row'
+      el.dataset.i = i
+      el.innerHTML = '<span class="dot" style="background:' + (it.ghost ? '#5c5d60' : it.color) + '"></span>' +
+        '<span class="nm">' + it.name + '</span>' +
+        '<span class="du">' + (it.sec ? RM.fmtDurMin(it.sec) : '今天还没有') + '</span>'
+      rowsEl.appendChild(el)
+    })
+    layoutRows()
+  }
+
+  /* 鼓轮：内容按 pos 连续位移，选中带固定在卡片中央 */
+  let posInitialized = false
+  function layoutRows() {
+    const n = laid.length
+    const VIS = 5
+    // 卡高 = 5 行；选中行停在正中（第 3 行）
+    bandEl.style.top = (16 + 2 * ROW_H) + 'px'
+    if (!posInitialized) { pos = selIndex; posInitialized = true }
+    const shift = (2 * ROW_H) - pos * ROW_H       // 让 pos 那行落在第 3 行位置
+    rowsEl.style.transform = 'translateY(' + shift + 'px)'
+    const sel = Math.round(pos)
+    ;[...rowsEl.children].forEach((el, i) => {
+      const d = Math.abs(i - pos)
+      const o = d < .5 ? 1 : d < 1.5 ? .52 : d < 2.5 ? .24 : 0
+      el.style.opacity = o
+      el.classList.toggle('sel', i === sel)
+      el.style.visibility = o === 0 ? 'hidden' : 'visible'
+    })
+    const selItem = laid[sel]
+    if (selItem) {
+      focusId = selItem.id
+      wrapEl.style.top = (RING_TOP + G.PLATE_R + 14) + 'px'
+      draw()
+    }
+  }
+
+  /* ---------- 手势 ---------- */
+  const scaleOf = () => phone.getBoundingClientRect().width / 375
+  let down = null, downPos = 0
+
+  function yOf(e) {
+    const r = cv.getBoundingClientRect()
+    const s = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e
+    return (s.clientY - r.top) / (r.height / CANVAS)
+  }
+
+  function onDown(e) {
+    if (!laid.length) return
+    const r = cv.getBoundingClientRect()
+    const s = (e.touches && e.touches[0]) || e
+    const cx = r.left + r.width / 2
+    const cy = r.top + r.height / 2
+    const x = (s.clientX - r.left) / (r.width / CANVAS)
+    const y = (s.clientY - r.top) / (r.height / CANVAS)
+    const hit = RM.hitTest(x, y, CANVAS / 2, CANVAS / 2, laid, {
+      R: G.R, SW: G.SW, TOUCH_PAD: 16, PLATE_R: G.PLATE_R, CENTER_HOLE: 34,
+    })
+    if (hit.zone === 'outside') return
+    // 指针捕获：按下后手指滑出盘外也要继续收到 move（"可以在屏幕任意处滑"）
+    try { cv.setPointerCapture(e.pointerId) } catch (err) {}
+    // 按下即选中"手指下那一块"，然后列表浮出
+    if (hit.id) pos = Math.max(0, laid.findIndex((z) => z.id === hit.id))
+    down = y; downPos = pos
+    listOpen = true
+    wrapEl.classList.add('show')
+    dim = 1
+    layoutRows()
+    if (e.preventDefault) e.preventDefault()
+  }
+
+  function onMove(e) {
+    if (down == null) return
+    const y = yOf(e)
+    // 手指上滑 → y 变小 → pos 变大（往下一条走）
+    const next = downPos + (down - y) / ROW_H
+    pos = Math.max(0, Math.min(laid.length - 1, next))
+    layoutRows()
+    if (e.preventDefault) e.preventDefault()
+  }
+
+  function onUp() {
+    if (down == null) return
+    down = null
+    pos = Math.round(pos)                    // 回弹到整行
+    layoutRows()
+    listOpen = false
+    wrapEl.classList.remove('show')
+    dim = 0
+    setTimeout(draw, 0)
+  }
+
+  cv.addEventListener('pointerdown', onDown)
+  cv.addEventListener('pointermove', onMove)
+  cv.addEventListener('pointerup', onUp)
+  cv.addEventListener('pointercancel', onUp)
+  cv.addEventListener('touchstart', (e) => { if (!window.PointerEvent) onDown(e) }, { passive: false })
+  cv.addEventListener('touchmove', (e) => { if (!window.PointerEvent) onMove(e) }, { passive: false })
+  cv.addEventListener('touchend', (e) => { if (!window.PointerEvent) onUp(e) }, { passive: false })
+
+  build()
+  initCanvas()
+  buildRows()
+  draw()
+})()
+</script>
+</body>
+</html>
