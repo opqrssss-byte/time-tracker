@@ -1205,16 +1205,18 @@ async function saveWidgetCategory() {
   const name = $('widget-new-cat-name').value.trim()
   if (!name) { setAddError('请输入分类名称'); return }
   if (IS_LOCAL) {                                  // 演示 / 沙盒：只加在本地
-    categories.push({ id: (IS_SANDBOX ? 'sb-c' : 'demo-c') + Date.now(), name, color: widgetSwatchColor, sort_order: categories.length + 1 })
+    const newCat = { id: (IS_SANDBOX ? 'sb-c' : 'demo-c') + Date.now(), name, color: widgetSwatchColor, sort_order: categories.length + 1 }
+    categories.push(newCat)
     setAddError('')
     closeWidgetAddPanel()
     showToast('分类已添加' + LOCAL_SUFFIX)
     renderRing(); renderCenter()
     sandboxSave()
+    await applySectorAction(newCat.id)             // 加完直接开始这一类
     return
   }
   const maxSort = categories.reduce((m, c) => Math.max(m, c.sort_order || 0), 0)
-  const { error } = await cloud.database.from('categories')
+  const { data, error } = await cloud.database.from('categories')
     .insert({ name, color: widgetSwatchColor, sort_order: maxSort + 1 }).select()
   if (error) {
     /* 会话过期要给"人话 + 出路"，不能只说"添加失败" —— 组件上没有别的登录入口 */
@@ -1232,6 +1234,11 @@ async function saveWidgetCategory() {
   await loadCategories()
   renderRing()
   renderCenter()
+  /* 新增完**直接开始这一类的计时**（用户："新增之后直接开始新增项目的计时就好，
+     现在新增之后还是原项目继续计时"）—— 走的是和"点这个分类"完全相同的路径，
+     所以旧项目会被正常关掉、新项目接着开始，不会出现两段并行。 */
+  const newId = (data && data[0] && data[0].id) || null
+  if (newId) await applySectorAction(newId)
 }
 
 /* ---------- 全部分类面板（扇区超上限时点「其他」进入） ---------- */

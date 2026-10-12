@@ -708,6 +708,11 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 }
 .wp-plus::before { left: 0; top: 5px; width: 12px; height: 2px; }
 .wp-plus::after { left: 5px; top: 0; width: 2px; height: 12px; }
+/* 「新增项目」那一行：无颜色的空条。
+   ⚠️ 这条规则曾在删掉"底部独立格"时被一起删掉 → 那一行没有背景、文字落到默认黑色、
+   和深色遮罩融在一起看不见（2026-10-12 用户实测）。**改样式时同时删了别处的规则，
+   一定要回头确认被复用的那个类还在。** */
+.wp-add { background: rgba(255, 255, 255, .10); color: rgba(255, 255, 255, .70); }
 
 /* 表盘在组件窗口里居中。
    原来它贴在窗口顶端（260×380 的窗口里，152 的盘落在 y≈4..156），
