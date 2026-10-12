@@ -2052,6 +2052,24 @@ window.addEventListener('offline', updateOfflineBanner)
   updateOfflineBanner()
   if (IS_DEMO) { enterDemo(); return }         // ?widget=1&demo=1：样例数据预览
   if (IS_SANDBOX) { enterSandbox(); return }   // ?widget=1&sandbox=1：空数据起步 + 本机持久化
+  /* ── 免登录 ──────────────────────────────────────────────────────────
+     先绑定空间，再进应用；**这里不再检查账号会话**。
+     绑定优先级见 Repo.bootstrap：
+       有令牌            → 直接用
+       没令牌 + 有账号会话 → claim：把账号名下已有数据迁进空间（老用户不丢数据）
+       没令牌 + 无会话     → create：开一个全新空间（新用户，全程不需要注册）
+     之后读写全部走令牌 + rpc，界面上再也不出现登录。
+
+     只有"绑定彻底失败"（典型是完全没网）才退回登录流程 —— 那是兜底，不是常规路径。 */
+  if (typeof Repo !== 'undefined' && Repo.bootstrap) {
+    const bind = await Repo.bootstrap()
+    if (bind && bind.ok) { enterApp(null); return }
+    const { data: fallbackSession } = await cloud.auth.getSession()   // 兜底：老账号会话还在就先让人进来
+    if (fallbackSession) { currentUser = fallbackSession.user || null; enterApp(currentUser); return }
+    showLogin()
+    return
+  }
+
   const { data: session, error } = await cloud.auth.getSession()
   if (error || !session) { showLogin(); return }
   currentUser = session.user || null
