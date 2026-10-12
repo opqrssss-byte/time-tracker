@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>弧排样品 v8</title>
+<style>
+  /* 独立样品页 · v8（用户圈红图定位的问题）
+     问题：条按**弦**（直线）定位 → 与圆边（弧）之间留出**新月形空隙**（用户圈红的地方）
+     修法：把条画成 **左边界就是圆盘那段弧** 的形状 → 空隙被填满
+     文字**保持水平**（不跟着转）—— 放在形状是直的那一侧
+     其余照旧：5 条聚焦窗、选中最大两端递减、两端模糊、整条完整不裁切 */
+  html,body{margin:0;height:100%;background:#0a0b0d;
+    font-family:"SF Pro Display",-apple-system,"Segoe UI",system-ui,sans-serif;
+    display:flex;align-items:center;justify-content:center;}
+  #stage{position:relative;width:260px;height:380px;display:flex;align-items:center;justify-content:center;}
+
+  #dial{position:relative;width:152px;height:152px;border-radius:50%;
+    background:radial-gradient(circle at 50% 42%,rgba(255,255,255,.07),rgba(255,255,255,.015) 62%),
+      rgba(18,19,22,.92);
+    border:1px solid rgba(255,255,255,.10);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+  /* 图形层：坐标原点挪到圆心，SVG 尺寸 = 盘直径（viewBox -76..76） */
+  #shapes{position:absolute;left:0;top:0;width:152px;height:152px;}
+  .bar{transition:opacity 220ms ease;}
+
+  #core{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    text-align:center;pointer-events:none;opacity:.9;}
+  #who{font-size:9.5px;color:rgba(255,255,255,.5);}
+
+  #hint{position:absolute;bottom:10px;width:100%;text-align:center;
+    font-size:11px;color:rgba(255,255,255,.30);}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="dial">
+    <svg id="shapes" viewBox="-76 -76 152 152" aria-hidden="true"></svg>
+    <div id="core"><div id="who">空闲</div></div>
+  </div>
+  <div id="hint">滚轮 / 上下键 转动 · 点一下直接选中</div>
+</div>
+<script>
+const CATS = [
+  { name: '工作', color: '#4F8CFF', dur: '2:15' },
+  { name: '学习', color: '#9B6DFF', dur: '45m' },
+  { name: '运动', color: '#2FBF71', dur: '20m' },
+  { name: '生活', color: '#F2A93B', dur: '1:05' },
+  { name: '阅读', color: '#23B8D5', dur: '35m' },
+  { name: '写作', color: '#F06EAA', dur: '10m' },
+  { name: '摸鱼', color: '#8a91a3', dur: '5m' },
+]
+
+const R = 76, SAFE = 4, LIMIT = R - SAFE   // 弧半径：条的左边界就是这条弧
+const ROW_H = 28
+const VISIBLE = 2
+
+/* 三级递减 */
+const LV = [
+  { h: 30, nm: 12.5, du: 10.5, pad: 20, blur: 0,   op: 1,    named: true  },
+  { h: 24, nm: 11,   du: 9,    pad: 16, blur: 0,   op: 0.94, named: true  },
+  { h: 18, nm: 10,   du: 8.5,  pad: 12, blur: 1.2, op: 0.66, named: false },
+]
+
+let sel = 0
+const svg = document.getElementById('shapes')
+
+function inkFor(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''))
+  if (!m) return '#fff'
+  const L = (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)) / 255
+  return L > 0.62 ? 'rgba(12,14,18,.92)' : 'rgba(255,255,255,.97)'
+}
+/* 圆上横坐标：x = -√(LIMIT² - y²)，y 越靠外 |x| 越小 */
+const xAt = (y) => -Math.sqrt(Math.max(0.01, LIMIT * LIMIT - y * y))
+
+/* ★ 条 = "圆环切片"：左边界是盘缘弧（半径 LIMIT），右边界是**同心的内弧**（半径 xRi）。
+   这样滚动时**两条边都在变**（每行的曲率都不同）—— 这才是看得见的"形变"。
+   之前只让左边贴弧、右边是直线，看起来就像"切了一块贴上去"（用户实测原话）。
+   附带好处：整个形状由两条同心弧夹出，**天然不可能超出圆盘**，不用再做钳制。 */
+function rowPath(yT, yB, xRi) {
+  const xLt = xAt(yT), xLb = xAt(yB)
+  const rIn = Math.max(8, xRi)
+  const xRt = -Math.sqrt(Math.max(0.01, rIn * rIn - yT * yT))
+  const xRb = -Math.sqrt(Math.max(0.01, rIn * rIn - yB * yB))
+  return [
+    `M ${xLt.toFixed(2)} ${yT.toFixed(2)}`,
+    `L ${xRt.toFixed(2)} ${yT.toFixed(2)}`,
+    `A ${rIn.toFixed(2)} ${rIn.toFixed(2)} 0 0 1 ${xRb.toFixed(2)} ${yB.toFixed(2)}`,
+    `L ${xLb.toFixed(2)} ${yB.toFixed(2)}`,
+    `A ${LIMIT} ${LIMIT} 0 0 0 ${xLt.toFixed(2)} ${yT.toFixed(2)}`,
+    'Z',
+  ].join(' ')
+}
+
+/* 常驻 5 个 <g>，**不再每次清空重建** —— 清空会把元素连同过渡一起扔掉
+   （用户报"动效怎么不见了"就是这个原因）。
+     位置：靠 transform 过渡 → 平滑滑动
+     形状：左右边界的 d 每次重算 → **形状本身随滚动连续变化**（这才是"形变"） */
+const POOL = []
+for (let i = 0; i < 5; i++) {
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+  g.style.transition = 'transform 280ms cubic-bezier(.25,.8,.3,1), opacity 220ms ease'
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+  const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+  t1.setAttribute('dominant-baseline', 'central')
+  t2.setAttribute('dominant-baseline', 'central')
+  t2.setAttribute('text-anchor', 'end')
+  t2.setAttribute('opacity', '0.78')
+  g.appendChild(path); g.appendChild(t1); g.appendChild(t2)
+  svg.appendChild(g)
+  POOL.push({ g, path, t1, t2 })
+}
+
+function render() {
+  const n = CATS.length
+  let k = 0
+  for (let i = 0; i < n; i++) {
+    let d = i - sel
+    if (d > n / 2) d -= n
+    if (d < -n / 2) d += n
+    const a = Math.abs(d)
+    if (a > VISIBLE) continue
+    const slot = POOL[k++]
+    if (!slot) break
+    const c = CATS[i]
+    const lv = LV[a] || LV[LV.length - 1]
+    const yc = d * ROW_H
+    const yT = yc - lv.h / 2, yB = yc + lv.h / 2
+    const r = lv.h / 2
+    slot.g.style.display = ''
+    slot.g.setAttribute('opacity', String(lv.op))
+    slot.g.setAttribute('filter', lv.blur ? 'blur(' + lv.blur + 'px)' : '')
+    slot.g.style.transform = 'translateY(' + (yc - (slot._yc || 0)).toFixed(2) + 'px)'
+    slot._yc = yc
+
+    const wName = lv.named ? c.name.length * lv.nm + 6 : 0
+    const wDur = lv.named ? c.dur.length * lv.du * 0.62 + 4 : 0
+    const barW = lv.named ? (wName + wDur + lv.pad) : 26     // 条的径向厚度
+    const xRi = LIMIT - barW                                  // 内弧半径
+
+    slot.path.setAttribute('d', rowPath(yT, yB, xRi))
+    slot.path.setAttribute('fill', c.color)
+    slot.path.setAttribute('stroke', a === 0 ? 'rgba(255,255,255,.34)' : 'none')
+    slot.path.setAttribute('stroke-width', a === 0 ? '1.5' : '0')
+    slot.path.style.cursor = 'pointer'
+    const idx = i
+    slot.path.onclick = () => { sel = idx; render() }
+
+    const ink = inkFor(c.color)
+    if (lv.named) {
+      const xIn = Math.max(xAt(yT), xAt(yB)) + 9
+      slot.t1.style.display = ''; slot.t2.style.display = ''
+      slot.t1.setAttribute('x', xIn.toFixed(2)); slot.t1.setAttribute('y', yc.toFixed(2))
+      slot.t1.setAttribute('font-size', lv.nm); slot.t1.setAttribute('font-weight', '600')
+      slot.t1.setAttribute('fill', ink); slot.t1.textContent = c.name
+      const rIn2 = Math.max(8, xRi)
+      const xRight = Math.max(-Math.sqrt(Math.max(0.01, rIn2*rIn2 - yT*yT)), -Math.sqrt(Math.max(0.01, rIn2*rIn2 - yB*yB)))
+      slot.t2.setAttribute('x', (xRight - 9).toFixed(2)); slot.t2.setAttribute('y', yc.toFixed(2))
+      slot.t2.setAttribute('font-size', lv.du); slot.t2.setAttribute('font-weight', '500')
+      slot.t2.setAttribute('fill', ink); slot.t2.textContent = c.dur
+    } else {
+      slot.t1.style.display = 'none'; slot.t2.style.display = 'none'
+    }
+  }
+  for (let j = k; j < POOL.length; j++) POOL[j].g.style.display = 'none'
+  document.getElementById('who').textContent = '当前 · ' + CATS[sel].name
+}
+
+let acc = 0
+const MAX_STEPS = 4
+window.addEventListener('wheel', (e) => {
+  e.preventDefault()
+  acc += e.deltaY
+  const dir = Math.sign(acc)
+  const steps = Math.floor(Math.abs(acc) / 100)
+  if (steps < 1) return
+  acc -= dir * steps * 100
+  const k = Math.min(steps, MAX_STEPS)
+  for (let i = 0; i < k; i++) sel = (sel + dir + CATS.length) % CATS.length
+  render()
+}, { passive: false })
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+  sel = (sel + (e.key === 'ArrowDown' ? 1 : -1) + CATS.length) % CATS.length
+  render()
+})
+render()
+</script>
+</body>
+</html>
