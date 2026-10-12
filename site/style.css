@@ -339,6 +339,13 @@ body.electron:not(.has-drag-ipc) #widget-plate svg { -webkit-app-region: no-drag
 }
 /* 滚轮选中：向外推出 + 提亮（其余扇区不变暗） */
 .ring-seg.focused { transform: scale(1.12); }
+/* 正在计时：呼吸。原来只有 opacity 1→0.72，太轻，不足以替代"计时开始"的提示。
+   改成同时压暗 + 降亮度，形成明显的脉动。（不动 stroke-width：那会让相邻扇区角向错位） */
+.ring-seg.active { animation: w-breathe-ring 2.2s ease-in-out infinite; }
+@keyframes w-breathe-ring {
+  0%, 100% { opacity: 1; filter: brightness(1.28); }
+  50% { opacity: 0.60; filter: brightness(0.92); }
+}
 /* 悬停只做"提亮"，不加粗——加粗会被误认成"正在计时"的那一段 */
 .ring-seg:hover, .ring-seg.hovered { filter: brightness(1.35); }
 /* 幽灵扇区（今日尚无记录的分类）：以轨道色呈现，保证「数据优先」，hover 才点亮 */
@@ -374,7 +381,9 @@ body.electron:not(.has-drag-ipc) #widget-plate svg { -webkit-app-region: no-drag
   .ring-seg.focused, .ring-confirm.focused { transform: none; }
   .ring-rot.detent-cw, .ring-rot.detent-ccw { animation: none; }
 }
-.ring-seg.active { animation: w-breathe 2.4s ease-in-out infinite; }
+/* 注意：`.ring-seg.active` 的呼吸动画定义在**上面**（靠近 .ring-seg.focused 那一段），
+   那里同时压暗 + 降亮度。这里不要再写一条同名规则 —— 同权重时后面的会覆盖前面的，
+   结果就是新版样式被这条旧的悄悄盖掉（2026-10-11 实际踩过）。 */
 @keyframes w-breathe {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.72; }
@@ -535,10 +544,13 @@ body.widget-mode #view-app,
 body.widget-mode #view-login { display: none !important; }
 body.widget-mode #view-widget.hidden { display: none !important; }
 
-/* widget 模式的 toast：固定在圆盘正下方（不再压在盘上，也不贴窗口底） */
+/* widget 模式的 toast：固定在圆盘正下方（不压在盘上，也不贴窗口底）
+   ⚠️ 原来写死 top:164px —— 那是按"表盘贴在窗口顶部"算的（盘底 156 + 8）。
+   后来把表盘改成**窗口居中**，盘底到了 50%+76，164px 就落进了盘内、压住读数。
+   改成跟着表盘算，布局再变也不会错位。 */
 body.widget-mode .toast {
   position: absolute; bottom: auto;
-  top: 164px; left: 50%; transform: translateX(-50%);
+  top: calc(50% + 92px); left: 50%; transform: translateX(-50%);
   font-size: 11px; font-weight: 500;
   padding: 6px 14px; letter-spacing: 0.2px;
   background: rgba(18, 18, 18, 0.94);

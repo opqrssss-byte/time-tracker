@@ -471,7 +471,7 @@ function localToggle(catId, { viaWheel = false } = {}) {
       else todayStats.byCat.none = (todayStats.byCat.none || 0) + d
     }
     runningEntry = { id: prefix + '-run', title: '', category_id: cid, start_time: new Date().toISOString() }
-    showToast((wasRunning ? '已切换' : '计时开始') + LOCAL_SUFFIX)
+    if (!IS_WIDGET) showToast((wasRunning ? '已切换' : '计时开始') + LOCAL_SUFFIX)
   }
   clearHover()
   renderRing()
@@ -1499,7 +1499,10 @@ async function startTimer(opts = {}) {
   }
   runningEntry = data && data[0]
   renderTimer()
-  showToast('计时开始')
+  /* 组件模式下不弹这条：它压在环心读数上，正好挡住刚启动的读秒。
+     "正在计时"改由**对应色块的呼吸高亮**表达（.ring-seg.active），
+     比一行会盖住数字的提示更直接。完整版网页仍保留提示。 */
+  if (!IS_WIDGET) showToast('计时开始')
 }
 
 async function stopTimer({ skipQuickTag = false } = {}) {
