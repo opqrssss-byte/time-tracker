@@ -375,7 +375,8 @@ const MAX_SECTORS = 15
 const GHOST_DEG = 4.5          // 今日无记录的分类保留的最小可点角度（幽灵扇区，越小越含蓄）
 /* —— 滚轮交互（仿三星旋转表圈：旋转=移动高亮，停顿/点击=确认）—— */
 const WHEEL_STEP = 100         // 累积 |deltaY| 达到该值才走一步（鼠标一格≈100~120，触控板小增量先攒）
-const WHEEL_LOCK_MS = 150      // 步进后锁定时长：忽略惯性连发，一次事件至多一步
+const WHEEL_LOCK_MS = 150      // （已废弃，保留常量以免别处引用报错）
+const WHEEL_MAX_STEPS = 6      // 一次事件最多跨几步：防止"一笔甩出去几十格"
 const WHEEL_IDLE_RESET_MS = 300 // 停这么久累积清零，避免两次半格拼成一格
 const FOCUS_CONFIRM_MS = 900   // 选中后停顿多久自动确认（开始 / 切换）
 const RING_CONFIRM_SW = 3      // 确认进度弧线宽
@@ -1136,13 +1137,22 @@ function onWheel(e) {
   clearTimeout(wheelResetTimer)
   wheelResetTimer = setTimeout(() => { wheelAccum = 0 }, WHEEL_IDLE_RESET_MS)
 
-  const now = performance.now()
-  if (now < wheelLockUntil) return                       // 锁定期内丢弃：忽略惯性连发
+  /* ── 动量式步进（2026-10-12 改）────────────────────────────────────────
+     原来有两处让"快滚也没用"：
+       ① `if (now < wheelLockUntil) return` —— 锁定期间的事件被**直接丢弃**，
+          于是步进被硬性限速在 ~6.7 步/秒，滚多快都一格一格跳
+       ② `wheelAccum = 0` —— 余数清零，两次半格拼不成一格
+     现在：**先累加、再按累积量一次性走多步**（保留余数）。
+       快速滚动 → 一次事件跨多格 → 立刻走多步；惯性尾巴也会继续推进，
+       手感像真正的滚动，而不是滴水。
+     每步仍各自 restartConfirmTimer()，所以"停住 900ms 确认"是从**最后一步**起算的。 */
   wheelAccum += dy
-  if (Math.abs(wheelAccum) < WHEEL_STEP) return          // 触控板小增量先累积成一格
-  wheelAccum = 0
-  wheelLockUntil = now + WHEEL_LOCK_MS
-  stepFocus(sign > 0 ? 1 : -1)                           // 滚轮向下 = 顺时针 = 下一段
+  const dir = Math.sign(wheelAccum)
+  const steps = Math.floor(Math.abs(wheelAccum) / WHEEL_STEP)
+  if (steps < 1) return                                  // 触控板小增量先累积成一格
+  wheelAccum -= dir * steps * WHEEL_STEP                 // 保留余数
+  const n = Math.min(steps, WHEEL_MAX_STEPS)             // 上限：一笔最多跨 6 格
+  for (let i = 0; i < n; i++) stepFocus(dir)             // 滚轮向下 = 顺时针 = 下一段
 }
 window.addEventListener('wheel', onWheel, { passive: false })
 
