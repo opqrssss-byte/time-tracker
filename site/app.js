@@ -208,11 +208,11 @@ async function runGsyncDiagnose() {
 
 /* ========== 登录 ========== */
 function showLogin() {
+  /* ⚠️ 这里曾经加过一道"已经在用就别踢出去"的闸，是**错的**，已撤掉。
+     当时的假设是"会话检查会误报"，可实际用户的会话是真失效的 ——
+     结果闸一拦，登录界面根本不显示，页面变成白屏（2026-10-12 用户截图）。
+     教训：不要用"猜测的容错"去盖住一个自己没搞清的检查逻辑。 */
   if (IS_WIDGET) { showWidgetLogin(); return }
-  /* 已经在用了就别把人踢出去：会话检查存在竞态（刷新/瞬时 SIGNED_OUT），
-     而真正的过期现在会在**写入时**明确报错并给出路（见 isAuthExpired），
-     不需要靠这个可能误判的检查来兜底。 */
-  if (!$('view-app').classList.contains('hidden')) return
   $('view-app').classList.add('hidden')
   $('view-login').classList.remove('hidden')
 }
