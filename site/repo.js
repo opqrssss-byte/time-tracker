@@ -45,10 +45,29 @@
     return data
   }
 
+  /* ⚠️ SDK 是从 CDN 加载的全局脚本，**它挂上 window.cloud 的时机不保证在 DOMContentLoaded 之前**
+     （实测出现过：init 已经跑到引导了，`cloud` 还是 undefined → 整轮引导被判失败退回登录）。
+     所以这里先等它就绪，最多等 8 秒，再发第一个 rpc。 */
+  function waitForSdk(timeoutMs) {
+    var deadline = Date.now() + (timeoutMs == null ? 8000 : timeoutMs)
+    return new Promise(function (resolve) {
+      (function poll() {
+        if (global.cloud && global.cloud.database && global.cloud.database.rpc) return resolve(true)
+        if (Date.now() > deadline) return resolve(false)
+        setTimeout(poll, 120)
+      })()
+    })
+  }
+
   function call(name, args) {
-    if (!global.cloud || !global.cloud.database || !global.cloud.database.rpc) {
-      return Promise.resolve({ ok: false, error: 'sdk_missing' })
-    }
+    return waitForSdk().then(function (ready) {
+      if (!ready) return { ok: false, error: 'sdk_missing' }
+      return callNow(name, args)
+    })
+  }
+
+  function callNow(name, args) {
+
     return global.cloud.database.rpc(name, args || {}).then(function (res) {
       if (res && res.error) return { ok: false, error: (res.error && res.error.message) || 'rpc_failed' }
       var d = unwrap(res && res.data)
