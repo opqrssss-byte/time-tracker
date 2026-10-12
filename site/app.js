@@ -209,6 +209,10 @@ async function runGsyncDiagnose() {
 /* ========== 登录 ========== */
 function showLogin() {
   if (IS_WIDGET) { showWidgetLogin(); return }
+  /* 已经在用了就别把人踢出去：会话检查存在竞态（刷新/瞬时 SIGNED_OUT），
+     而真正的过期现在会在**写入时**明确报错并给出路（见 isAuthExpired），
+     不需要靠这个可能误判的检查来兜底。 */
+  if (!$('view-app').classList.contains('hidden')) return
   $('view-app').classList.add('hidden')
   $('view-login').classList.remove('hidden')
 }
@@ -388,6 +392,12 @@ let wheelLockUntil = 0         // 步进锁定截止时间戳
 let wheelResetTimer = null     // 累积清零定时器
 
 function showWidgetLogin() {
+  /* ⚠️ 必须把其它视图也收起来：原来只 remove 自己的 hidden、不 add 别人的，
+     所以只要"完整版已经进来了"、之后又有一次会话判定失败（刷新竞态 / 瞬时
+     SIGNED_OUT），就会**两个视图叠在一起** —— 完整版在正常计时，右边却挂着一个
+     死的组件登录圈，用户看到的就是"卡住"（2026-10-12 用户截图确认）。
+     视图切换必须是**互斥**的，不能是"只点灯不关灯"。 */
+  ;['view-app', 'view-login'].forEach((id) => { const el = $(id); if (el) el.classList.add('hidden') })
   $('view-widget').classList.remove('hidden')
   $('widget-login').classList.remove('hidden')
   $('widget-plate').classList.add('hidden')
