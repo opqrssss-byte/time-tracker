@@ -838,7 +838,7 @@ function updatePickOverlay() {
   layer.classList.toggle('hidden', !on)
   if (!on) return
 
-  const ids = ringData.map((x) => x.id)      // 只有分类；「新增」固定在底部那一格
+  const ids = ringData.map((x) => x.id).concat(['__add__'])   // 末位固定「新增项目」
 
   if (ids.join(',') !== pickIds.join(',')) {
     box.innerHTML = ''
@@ -847,7 +847,11 @@ function updatePickOverlay() {
     ids.forEach((id) => {
       const el = document.createElement('div')
       el.className = 'wp-row'
-      el.innerHTML = '<div class="wp-bar"><span class="wp-nm"></span><span class="wp-du"></span><span class="wp-prog"></span></div>'
+      /* 「新增项目」那行**没有时长**（.wp-du），但有确认进度线（.wp-prog）——
+         滚到它、停留 900ms 同样会走进度、同样能确认。 */
+      el.innerHTML = id === '__add__'
+        ? '<div class="wp-bar wp-add"><span class="wp-plus"></span><span class="wp-nm"></span><span class="wp-prog"></span></div>'
+        : '<div class="wp-bar"><span class="wp-nm"></span><span class="wp-du"></span><span class="wp-prog"></span></div>'
       box.appendChild(el)
       const bar = el.querySelector('.wp-bar')
       pickRows.push({
@@ -876,7 +880,9 @@ function updatePickOverlay() {
       const it = ringData.find((x) => x.id === r.id) || {}
       r.nm.textContent = pickName(r.id)
       if (r.du) r.du.textContent = (it.sec || 0) > 0 ? fmtDurMin(it.sec) : '—'
-      L0 = Math.max(L0, r.nm.scrollWidth + r.du.scrollWidth + 10 + 32 + 2)
+      /* ⚠️ 必须判空：`__add__` 那行没有 .wp-du，「新增项目」又占一个 ＋ 图标宽。
+       不判空这里会抛 TypeError —— 之前"浮层只剩一条"的根因就是它。 */
+    L0 = Math.max(L0, r.nm.scrollWidth + (r.du ? r.du.scrollWidth : 0) + (r.id === '__add__' ? 16 : 0) + 10 + 32 + 2)
     })
     L0 = Math.min(L0, maxW)
   } catch (err) {
@@ -893,6 +899,8 @@ function updatePickOverlay() {
     r.el.classList.toggle('cur', d === 0)
 
     const it = ringData.find((x) => x.id === r.id) || {}
+    /* 「新增项目」不吃时长映射，固定用最短档（它本来就没有时长） */
+    if (r.id === '__add__') { r.bar.style.width = L0 + 'px'; return }
     const ghost = !!it.ghost && !it.active
     const share = Math.min(1, (it.sec || 0) / maxSec)
     r.bar.style.width = Math.round(Math.min(maxW, L0 + (maxW - L0) * share)) + 'px'
@@ -1022,7 +1030,7 @@ function clearFocus() {
    做出一点差异性"。切换 = 滚轮循环 + 停留确认；新增 = 底部独立一格、只接受点击。
    （曾经把「新增」并进序列让它可停留，结果是每转一圈都会扫过它、一停就弹面板，
     太重也容易误触。） */
-function focusableIds() { return ringData.map((x) => x.id) }
+function focusableIds() { return ringData.map((x) => x.id).concat('__add__') }
 
 function stepFocus(dir) {
   const ids = focusableIds()

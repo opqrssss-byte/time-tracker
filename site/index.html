@@ -30,11 +30,12 @@
 
     <!-- 切换态浮层：滚轮一滚才出现 —— 荧光条盖住表盘、背景模糊、循环滚动、末位「新增项目」。
          停留 FOCUS_CONFIRM_MS 自动确认（或点击）；鼠标移开不清选中（选中与鼠标位置无关）。 -->
+    <!-- 滚轮切换浮层。分类 + 末位「新增项目」都在这个列表里，同一套交互：
+         滚到 → 停留 900ms → 确认（分类=切换 / 新增=弹出新增窗口）。
+         曾经把「新增」拆成底部独立一格（想做"差异性"），实测既点不动、
+         也和产品形态不符 —— 已折回列表内。 -->
     <div id="widget-pick" class="hidden">
       <div id="widget-pick-list"></div>
-      <!-- 「新增项目」固定在底部、不进滚轮循环：切换是"滚轮+停留"，新增是"点一下"，
-           两者刻意用不同逻辑（用户明确要求做出差异性） -->
-      <button id="widget-pick-add" type="button"><span class="wp-plus"></span>新增项目</button>
     </div>
 
     <button id="widget-add-cat" type="button" title="新增分类">+</button>
