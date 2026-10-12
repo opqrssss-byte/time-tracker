@@ -1160,6 +1160,29 @@ function setAddError(msg) {
   el.classList.toggle('hidden', !msg)
 }
 
+/* ── 会话失效的识别与兜底（2026-10-12 补）────────────────────────────────
+   背景：云端的 categories/time_entries 开着 RLS，owner_id 的默认值是 auth.uid()。
+   会话一旦过期，**读会返回空数组而不是报错**（RLS 的自然行为），写入才会报错：
+     · 42501  RLS 策略拒绝（with check owner_id = auth.uid() 不成立）
+     · 23502  owner_id 非空约束失败（默认值 auth.uid() 取到了 null）
+   之前的代码遇到这两种情况只会说"添加失败，请重试"，用户完全不知道是登录过期 ——
+   而**组件上根本没有重新登录的入口**，于是就成了死路。
+   现在：识别出来 → 直接把组件切回登录态（那里有「打开完整版登录」按钮）。 */
+function isAuthExpired(err) {
+  if (!err) return false
+  const code = String(err.code || '')
+  const msg = String(err.message || '')
+  return code === '42501' || code === '23502' ||
+    /row-level security|violates not-null|permission denied/i.test(msg)
+}
+
+/** 会话失效时的统一兜底：提示 + （组件下）切回登录态，给用户一条出路 */
+function handleAuthExpired() {
+  if (IS_WIDGET) { showWidgetLogin(); return true }
+  showToast('登录已过期，请重新登录')
+  return true
+}
+
 async function saveWidgetCategory() {
   const name = $('widget-new-cat-name').value.trim()
   if (!name) { setAddError('请输入分类名称'); return }
@@ -1176,7 +1199,13 @@ async function saveWidgetCategory() {
   const { error } = await cloud.database.from('categories')
     .insert({ name, color: widgetSwatchColor, sort_order: maxSort + 1 }).select()
   if (error) {
-    setAddError(error.code === '23505' ? '同名分类已存在' : '添加失败，请重试')
+    /* 会话过期要给"人话 + 出路"，不能只说"添加失败" —— 组件上没有别的登录入口 */
+    if (isAuthExpired(error)) { closeWidgetAddPanel(); handleAuthExpired(); return }
+    /* 带上具体原因：只说"添加失败，请重试"等于没说，用户没法反馈也没法自查
+       （2026-10-12：用户报"添加没法用"，界面上却什么都看不到） */
+    setAddError(error.code === '23505'
+      ? '同名分类已存在'
+      : '添加失败：' + (error.code || '') + ' ' + (error.message || '请重试'))
     return
   }
   setAddError('')
@@ -1356,7 +1385,11 @@ async function loadCategories() {
     .from('categories').select('*').order('sort_order', { ascending: true })
   if (error) { showToast('分类加载失败：' + (error.message || '请重试')); return }
   if (!data || data.length === 0) {
+    /* 空 ≠ 新用户！RLS 下"会话失效"同样返回空数组。
+       所以这里要区分：插入成功 = 真是新用户；插入被权限拒 = 会话过期，
+       必须把状态暴露出来（否则界面看起来"正常"，用户只会觉得"点了没反应"）。 */
     const seeded = await cloud.database.from('categories').insert(DEFAULT_CATEGORIES).select()
+    if (isAuthExpired(seeded.error)) { handleAuthExpired(); return }
     if (!seeded.error && seeded.data && seeded.data.length) data = seeded.data
   }
   categories = data || []
@@ -1911,7 +1944,10 @@ $('btn-add-cat').addEventListener('click', async () => {
   const { data, error } = await cloud.database.from('categories')
     .insert({ name, color, sort_order: maxSort + 1 }).select()
   if (error) {
-    showToast(error.code === '23505' ? '同名分类已存在' : '添加失败，请重试')
+    if (isAuthExpired(error)) { handleAuthExpired(); return }
+    showToast(error.code === '23505'
+      ? '同名分类已存在'
+      : '添加失败：' + (error.code || '') + ' ' + (error.message || '请重试'))
     return
   }
   $('new-cat-name').value = ''
