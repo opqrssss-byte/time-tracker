@@ -376,7 +376,7 @@ const GHOST_DEG = 4.5          // 今日无记录的分类保留的最小可点�
 /* —— 滚轮交互（仿三星旋转表圈：旋转=移动高亮，停顿/点击=确认）—— */
 const WHEEL_STEP = 100         // 累积 |deltaY| 达到该值才走一步（鼠标一格≈100~120，触控板小增量先攒）
 const WHEEL_LOCK_MS = 150      // （已废弃，保留常量以免别处引用报错）
-const WHEEL_MAX_STEPS = 6      // 一次事件最多跨几步：防止"一笔甩出去几十格"
+const WHEEL_MAX_STEPS = 4      // 一次事件最多跨几步（6→4：用户反馈"有点太过头了"）
 const WHEEL_IDLE_RESET_MS = 300 // 停这么久累积清零，避免两次半格拼成一格
 const FOCUS_CONFIRM_MS = 900   // 选中后停顿多久自动确认（开始 / 切换）
 const RING_CONFIRM_SW = 3      // 确认进度弧线宽
@@ -900,7 +900,7 @@ function updatePickOverlay() {
     let d = i - fi                       // 环形最短距离 → 到末位自然绕回开头
     if (d > n / 2) d -= n
     if (d < -n / 2) d += n
-    r.el.style.top = 'calc(50% + ' + (d * PICK_ROW_H) + 'px)'   // 居中由 CSS 的 translateY(-50%) 负责
+    r.el.style.transform = 'translateY(' + (d * PICK_ROW_H) + 'px)'   // 居中由 CSS 的 margin-top 负责
     const a = Math.abs(d)
     r.el.style.opacity = a < 0.5 ? 1 : a < 1.5 ? 0.55 : a < 2.5 ? 0.22 : 0
     r.el.style.visibility = a > 2.5 ? 'hidden' : 'visible'

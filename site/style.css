@@ -660,14 +660,16 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 
 .wp-row {
   position: absolute; left: 12px; right: 12px;
-  /* 位置用 top 表达（JS 写 calc(50% + Npx)），transform 只负责居中。
-     把偏移写进 transform 的 translateY(calc(-50% + Npx)) 会因"百分比与像素混用的
-     calc 无效"被整条丢弃 → 所有行叠在中心。 */
-  top: 50%; transform: translateY(-50%);
+  /* 居中改用 margin-top（行高固定 44 → -22），**把 transform 整个让给位移**：
+     ① 位移用 transform 而不是 top —— transform 走合成层，多格跳动时明显更跟手
+        （用 top 时快速滚动会抖，2026-10-12 用户反馈"不太流畅"）
+     ② **纯 px 的 translateY 是安全的** —— 之前踩的坑是 % 与 px 混用的 calc，
+        那种会被整条丢弃 → 所有行叠在中心 */
+  top: 50%; margin-top: -22px;
   display: flex; justify-content: flex-start;
-  /* top 由 JS 按"环形最短距离"写入 → 到末位自然绕回开头 */
-  transition: top 150ms cubic-bezier(.22,1,.36,1), opacity 150ms ease;
-  will-change: top, opacity;
+  /* transform 由 JS 按"环形最短距离"写入 → 到末位自然绕回开头 */
+  transition: transform 280ms cubic-bezier(.25, .8, .3, 1), opacity 200ms ease;
+  will-change: transform, opacity;
 }
 .wp-bar {
   position: relative; display: flex; align-items: center; justify-content: space-between;
