@@ -368,7 +368,10 @@ const RING_R = 54              // 环半径（玻璃盘 152 → 外缘 59，留 
 const RING_SW = 11             // 环带宽（中心留 98px 放读数，可容 125:15）
 const RING_CIRC = 2 * Math.PI * RING_R
 const SEG_GAP_VIS = 4          // 扇区视觉间隙（圆头线帽各向外延伸 SW/2）
-const MAX_SECTORS = 7          // 环上直接展示的最大扇区数，其余合并为「其他」
+/* 环上直接展示的最大扇区数，其余合并为「其他分类」。
+   7 → 15（用户："我新添加了几个选项进去，新增选项在表盘中不会高亮展示"）——
+   注意：**缩放列表不受这个上限影响**，它始终展示全部分类。 */
+const MAX_SECTORS = 15
 const GHOST_DEG = 4.5          // 今日无记录的分类保留的最小可点角度（幽灵扇区，越小越含蓄）
 /* —— 滚轮交互（仿三星旋转表圈：旋转=移动高亮，停顿/点击=确认）—— */
 const WHEEL_STEP = 100         // 累积 |deltaY| 达到该值才走一步（鼠标一格≈100~120，触控板小增量先攒）
@@ -722,9 +725,12 @@ function widgetSectors() {
     ghosts.forEach((x) => withDeg.push({ ...x, deg: 360 / ghosts.length, ghost: true }))
   }
 
+  /* 正在计时的那个**优先入选、绝不参与截断** —— 否则分类一多，刚切过去/刚新增的
+     那一类会被折进「其他分类」，环上就看不到高亮（2026-10-12 用户实测报过）。 */
   const sorted = withDeg.sort((a, b) => b.deg - a.deg)
-  const items = sorted.slice(0, MAX_SECTORS)
-  const rest = sorted.slice(MAX_SECTORS)
+  const ordered = sorted.filter((x) => x.active).concat(sorted.filter((x) => !x.active))
+  const items = ordered.slice(0, MAX_SECTORS)
+  const rest = ordered.slice(MAX_SECTORS)
   if (rest.length) {
     items.push({
       id: '__other__', name: '其他分类', color: 'rgba(255,255,255,0.16)',
@@ -838,7 +844,8 @@ function updatePickOverlay() {
   layer.classList.toggle('hidden', !on)
   if (!on) return
 
-  const ids = ringData.map((x) => x.id).concat(['__add__'])   // 末位固定「新增项目」
+  pickData = pickList()                       // 完整列表（含新增项），不受环的截断影响
+  const ids = pickData.map((x) => x.id)
 
   if (ids.join(',') !== pickIds.join(',')) {
     box.innerHTML = ''
@@ -874,10 +881,10 @@ function updatePickOverlay() {
   let L0 = 80
   /* maxSec 放在 try 外面：它只依赖 ringData，不会抛；而它一旦留在兜底值 1，
      所有非零的条都会算成 share=1 → 全变成满宽，条长就彻底失去意义了 */
-  const maxSec = Math.max(1, ...ringData.map((x) => x.sec || 0))
+  const maxSec = Math.max(1, ...pickData.map((x) => x.sec || 0))
   try {
     pickRows.forEach((r) => {
-      const it = ringData.find((x) => x.id === r.id) || {}
+      const it = pickData.find((x) => x.id === r.id) || {}
       r.nm.textContent = pickName(r.id)
       if (r.du) r.du.textContent = (it.sec || 0) > 0 ? fmtDurMin(it.sec) : '—'
       /* ⚠️ 必须判空：`__add__` 那行没有 .wp-du，「新增项目」又占一个 ＋ 图标宽。
@@ -898,7 +905,7 @@ function updatePickOverlay() {
     r.el.style.visibility = a > 2.5 ? 'hidden' : 'visible'
     r.el.classList.toggle('cur', d === 0)
 
-    const it = ringData.find((x) => x.id === r.id) || {}
+    const it = pickData.find((x) => x.id === r.id) || {}
     /* 「新增项目」不吃时长映射，固定用最短档（它本来就没有时长） */
     if (r.id === '__add__') { r.bar.style.width = L0 + 'px'; return }
     const ghost = !!it.ghost && !it.active
@@ -1030,7 +1037,29 @@ function clearFocus() {
    做出一点差异性"。切换 = 滚轮循环 + 停留确认；新增 = 底部独立一格、只接受点击。
    （曾经把「新增」并进序列让它可停留，结果是每转一圈都会扫过它、一停就弹面板，
     太重也容易误触。） */
-function focusableIds() { return ringData.map((x) => x.id).concat('__add__') }
+/* 浮层用**完整**分类列表，不走环的截断 —— 环上超出上限可以折叠成「其他分类」，
+   但**切换列表不能少任何一项**（2026-10-12 用户实测：新加的分类在滚动菜单里看不到）。
+   已经从 ringData 拿到的直接用（省一次计算），没拿到的按同一口径现算。 */
+let pickData = []
+function pickList() {
+  const byId = {}
+  ringData.forEach((it) => { byId[it.id] = it })
+  const elapsed = elapsedSec()
+  const out = categories.map((c) => {
+    if (byId[c.id]) return byId[c.id]
+    const sec = (todayStats.byCat[c.id] || 0) + (runningEntry && runningEntry.category_id === c.id ? elapsed : 0)
+    return {
+      id: c.id, name: c.name, color: c.color, sec: sec,
+      active: !!(runningEntry && runningEntry.category_id === c.id),
+      ghost: sec <= 0,
+    }
+  })
+  if (byId.__none__) out.push(byId.__none__)
+  out.push({ id: '__add__', name: '新增项目', color: null, sec: 0 })   // 末位固定「新增项目」
+  return out
+}
+
+function focusableIds() { return pickList().map((x) => x.id) }
 
 function stepFocus(dir) {
   const ids = focusableIds()
