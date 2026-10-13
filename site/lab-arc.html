@@ -64,6 +64,11 @@ const LV = [
 ]
 
 let sel = 0
+/* ★ offset 是**不取模**的连续位置：滚动时它单调地加减，
+   于是每个分类的 d = i - offset 也**连续变化** —— 条只会朝一个方向走，
+   一条"从一边进来、另一边出去"，绝不会横穿整个盘（用户报的"堆到一起"就是这个）。
+   旧的写法是 d = i - sel 再取模，快速滚动时条会被重新分到对面 → 只能穿过中心滑过去。 */
+let offset = 0
 const svg = document.getElementById('shapes')
 
 function inkFor(hex) {
@@ -101,7 +106,10 @@ function fitsAll(x, yT, yB, w) {
      位置：靠 transform 过渡 → 平滑滑动
      形状：左右边界的 d 每次重算 → **形状本身随滚动连续变化**（这才是"形变"） */
 const POOL = []
-for (let i = 0; i < 5; i++) {
+/* 槽位绑定**分类下标**（而不是"当前可见的第 k 个"）——
+   这样每条永远用同一个 <g>，位置连续变化，不会因为顺序变化而重新分配。
+   数量 = 分类数：lab 里分类是固定的，够用；真实组件里改成按需扩容即可。 */
+for (let i = 0; i < CATS.length; i++) {
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
   g.style.transition = 'transform 300ms cubic-bezier(.22,1,.36,1), opacity 220ms ease'
   g.style.willChange = 'transform, opacity'
@@ -119,52 +127,47 @@ for (let i = 0; i < 5; i++) {
 
 function render() {
   const n = CATS.length
-  let k = 0
   for (let i = 0; i < n; i++) {
-    let d = i - sel
-    if (d > n / 2) d -= n
-    if (d < -n / 2) d += n
+    const slot = POOL[i]
+    const d = i - offset                       // ★ 不取模：连续变化
     const a = Math.abs(d)
-    if (a > VISIBLE) continue
-    const slot = POOL[k++]
-    if (!slot) break
+    if (a > VISIBLE + 0.5) { slot.g.style.display = 'none'; continue }
+    slot.g.style.display = ''
     const c = CATS[i]
-    const lv = LV[a] || LV[LV.length - 1]
+    const lv = LV[Math.min(2, Math.round(a))] || LV[2]
     const yc = d * ROW_H
     const yT = yc - lv.h / 2, yB = yc + lv.h / 2
-    const r = lv.h / 2
-    slot.g.style.display = ''
-    slot.g.setAttribute('opacity', String(lv.op))
+
     const bv = lv.blur ? 'blur(' + lv.blur + 'px)' : ''
-    if (slot._b !== bv) { slot.g.setAttribute('filter', bv); slot._b = bv }   // blur 最贵，尤其不能反复设
-    /* 位移用**绝对**值。原来是增量（yc−上次yc）却又按新位置重绘路径 → 两者叠加 → 上下抽风 */
+    if (slot._b !== bv) { slot.g.setAttribute('filter', bv); slot._b = bv }
+    slot.g.setAttribute('opacity', String(lv.op))
     slot.g.style.transform = 'translate(0, ' + yc.toFixed(2) + 'px)'
 
     const wName = lv.named ? c.name.length * lv.nm + 6 : 0
     const wDur = lv.named ? c.dur.length * lv.du * 0.62 + 4 : 0
     const wantW = lv.named ? (wName + wDur + lv.pad) : 26
-    /* 左端贴弦位（按最外边缘算）→ 完全贴紧盘缘且不出圆 */
     const yOuter = Math.max(Math.abs(yT), Math.abs(yB))
     const half = Math.sqrt(Math.max(0, LIMIT * LIMIT - yOuter * yOuter))
     const xL = -half
     let w = wantW
     while (w > 16 && !fitsAll(xL, yT, yB, w)) w -= 1
-    const dstr = capsulePath(yT - yc, yB - yc, xL, xL + w)
-    if (slot._d !== dstr) { slot.path.setAttribute('d', dstr); slot._d = dstr }   // 没变就不写，避免中途重栅格化
-    if (slot._f !== c.color) { slot.path.setAttribute('fill', c.color); slot._f = c.color }
-    slot.path.setAttribute('stroke', a === 0 ? 'rgba(255,255,255,.34)' : 'none')
-    slot.path.setAttribute('stroke-width', a === 0 ? '1.5' : '0')
 
-    slot.path.setAttribute('stroke-width', a === 0 ? '1.5' : '0')
+    const dstr = capsulePath(yT - yc, yB - yc, xL, xL + w)
+    if (slot._d !== dstr) { slot.path.setAttribute('d', dstr); slot._d = dstr }
+    if (slot._f !== c.color) { slot.path.setAttribute('fill', c.color); slot._f = c.color }
+    const st = Math.round(a) === 0 ? 'rgba(255,255,255,.34)' : 'none'
+    if (slot._s !== st) {
+      slot.path.setAttribute('stroke', st)
+      slot.path.setAttribute('stroke-width', st === 'none' ? '0' : '1.5')
+      slot._s = st
+    }
     slot.path.style.cursor = 'pointer'
-    const idx = i
-    slot.path.onclick = () => { sel = idx; render() }
+    slot.path.onclick = () => { offset = i; render() }
 
     const ink = inkFor(c.color)
     if (lv.named) {
-      const xIn = xL + 9
       slot.t1.style.display = ''; slot.t2.style.display = ''
-      slot.t1.setAttribute('x', xIn.toFixed(2)); slot.t1.setAttribute('y', '0')
+      slot.t1.setAttribute('x', (xL + 9).toFixed(2)); slot.t1.setAttribute('y', '0')
       slot.t1.setAttribute('font-size', lv.nm); slot.t1.setAttribute('font-weight', '600')
       slot.t1.setAttribute('fill', ink); slot.t1.textContent = c.name
       slot.t2.setAttribute('x', (xL + w - 9).toFixed(2)); slot.t2.setAttribute('y', '0')
@@ -174,8 +177,7 @@ function render() {
       slot.t1.style.display = 'none'; slot.t2.style.display = 'none'
     }
   }
-  for (let j = k; j < POOL.length; j++) POOL[j].g.style.display = 'none'
-  document.getElementById('who').textContent = '当前 · ' + CATS[sel].name
+  document.getElementById('who').textContent = '当前 · ' + CATS[((offset % n) + n) % n].name
 }
 
 let acc = 0
@@ -188,12 +190,12 @@ window.addEventListener('wheel', (e) => {
   if (steps < 1) return
   acc -= dir * steps * 100
   const k = Math.min(steps, MAX_STEPS)
-  for (let i = 0; i < k; i++) sel = (sel + dir + CATS.length) % CATS.length
+  for (let i = 0; i < k; i++) offset += dir
   render()
 }, { passive: false })
 window.addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
-  sel = (sel + (e.key === 'ArrowDown' ? 1 : -1) + CATS.length) % CATS.length
+  offset += (e.key === 'ArrowDown' ? 1 : -1)
   render()
 })
 render()
