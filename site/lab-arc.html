@@ -133,8 +133,8 @@ function render() {
     slot.g.style.display = ''
     slot.g.setAttribute('opacity', String(lv.op))
     slot.g.setAttribute('filter', lv.blur ? 'blur(' + lv.blur + 'px)' : '')
-    slot.g.style.transform = 'translateY(' + (yc - (slot._yc || 0)).toFixed(2) + 'px)'
-    slot._yc = yc
+    /* 位移用**绝对**值。原来是增量（yc−上次yc）却又按新位置重绘路径 → 两者叠加 → 上下抽风 */
+    slot.g.style.transform = 'translate(0, ' + yc.toFixed(2) + 'px)'
 
     const wName = lv.named ? c.name.length * lv.nm + 6 : 0
     const wDur = lv.named ? c.dur.length * lv.du * 0.62 + 4 : 0
@@ -145,7 +145,10 @@ function render() {
     const xL = -half
     let w = wantW
     while (w > 16 && !fitsAll(xL, yT, yB, w)) w -= 1
-    slot.path.setAttribute('d', capsulePath(yT, yB, xL, xL + w))
+    slot.path.setAttribute('d', capsulePath(yT - yc, yB - yc, xL, xL + w))
+    slot.path.setAttribute('fill', c.color)
+    slot.path.setAttribute('stroke', a === 0 ? 'rgba(255,255,255,.34)' : 'none')
+    slot.path.setAttribute('stroke-width', a === 0 ? '1.5' : '0')
 
     slot.path.setAttribute('stroke-width', a === 0 ? '1.5' : '0')
     slot.path.style.cursor = 'pointer'
@@ -156,10 +159,10 @@ function render() {
     if (lv.named) {
       const xIn = xL + 9
       slot.t1.style.display = ''; slot.t2.style.display = ''
-      slot.t1.setAttribute('x', xIn.toFixed(2)); slot.t1.setAttribute('y', yc.toFixed(2))
+      slot.t1.setAttribute('x', xIn.toFixed(2)); slot.t1.setAttribute('y', '0')
       slot.t1.setAttribute('font-size', lv.nm); slot.t1.setAttribute('font-weight', '600')
       slot.t1.setAttribute('fill', ink); slot.t1.textContent = c.name
-      slot.t2.setAttribute('x', (xL + w - 9).toFixed(2)); slot.t2.setAttribute('y', yc.toFixed(2))
+      slot.t2.setAttribute('x', (xL + w - 9).toFixed(2)); slot.t2.setAttribute('y', '0')
       slot.t2.setAttribute('font-size', lv.du); slot.t2.setAttribute('font-weight', '500')
       slot.t2.setAttribute('fill', ink); slot.t2.textContent = c.dur
     } else {
