@@ -122,7 +122,7 @@ const COPIES = 2
 const N = CATS.length
 
 const strip = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-strip.style.willChange = 'transform'
+strip.style.willChange = 'transform'   // 只这一层在动
 svg.appendChild(strip)
 
 /* 建 2N 条，位置固定不变（局部 y = (k-2)*ROW_H，给上方留出 VISIBLE 个位） */
@@ -141,29 +141,52 @@ for (let k = 0; k < N * COPIES; k++) {
   ROWS.push({ g, path, t1, t2, K: k, cat: CATS[k % N], baseY: (k - VISIBLE) * ROW_H })
 }
 
-let lastShift = null
-function render() {
-  const sel = ((offset % N) + N) % N                 // 当前选中的分类下标
-  const shift = sel * ROW_H                          // 整条带子要平移多少
-  if (shift !== lastShift) {
-    if (lastShift !== null && Math.abs(shift - lastShift) > ROW_H * 1.5) {
-      /* 到界归位：关掉过渡直接跳到另一端 —— 两份拷贝一模一样，看不出跳变 */
-      strip.style.transition = 'none'
-      strip.style.transform = 'translate(0, ' + (-shift) + 'px)'
-      void strip.getBBox()                            // 强制失效，确保下一帧不带过渡
-      strip.style.transition = 'transform 300ms cubic-bezier(.22,1,.36,1)'
-    } else {
-      strip.style.transition = 'transform 300ms cubic-bezier(.22,1,.36,1)'
-      strip.style.transform = 'translate(0, ' + (-shift) + 'px)'
-    }
-    lastShift = shift
+/* ══════════════════════════════════════════════════════════════════
+   运动层：**rAF 手动插值**（抄 ncdai/react-wheel-picker 的做法）
+   ------------------------------------------------------------------
+   原来用 CSS transition，有三个先天问题：
+     · SVG 上的 transform 不走合成层 → 卡
+     · 快速滚动时过渡被反复重启 → 抖
+     · 到界归位要临时关过渡 → 观感断裂
+   换成 rAF 后：**全程只有一个浮点数 `pos` 在变**，每帧只写一次 transform。
+   取模归位由"两份拷贝"兜住 —— 画面一模一样，所以看不见。
+   ══════════════════════════════════════════════════════════════════ */
+let pos = 0            // 当前（浮点）
+let target = 0         // 目标（整数格）
+let rafId = 0
+const easeOutCubic = (t) => Math.pow(t - 1, 3) + 1
+
+function stopAnim() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0 } }
+
+function animateTo() {
+  stopAnim()
+  const from = pos
+  const to = target
+  const dist = Math.abs(to - from)
+  if (dist < 0.001) { pos = to; paint(); return }
+  const dur = Math.min(380, 140 + dist * 70)          // 跨得越多，给的时间略长
+  const t0 = performance.now()
+  const tick = (now) => {
+    const t = (now - t0) / dur
+    if (t < 1) { pos = from + easeOutCubic(t) * (to - from); paint(); rafId = requestAnimationFrame(tick) }
+    else { stopAnim(); pos = to; paint() }
   }
+  rafId = requestAnimationFrame(tick)
+}
+
+function render() { target = offset; animateTo() }     // 外部只改 offset，动画交给 rAF
+
+function paint() {
+  const frac = ((pos % N) + N) % N                     // 带子的平移量（浮点）
+  strip.style.transform = 'translate(0, ' + (-frac * ROW_H).toFixed(2) + 'px)'
+  const sel = ((Math.round(pos) % N) + N) % N
 
   for (let r = 0; r < ROWS.length; r++) {
     const row = ROWS[r]
     /* 这一条离带子中心的**格数差**：把 sel 对应的那条对齐到 0 */
-    let d = (row.K - VISIBLE) - sel
-    d = d - N * Math.round(d / N)                    // 归到 [-N/2, N/2)：决定等级用
+    let d = (row.K - VISIBLE) - frac                 // 用**浮点** frac：位置连续
+    const dRound = d - N * Math.round(d / N)          // 归到 [-N/2,N/2)：只用来定等级
+    d = dRound
     const a = Math.abs(d)
     if (a > VISIBLE + 0.5) { row.g.style.display = 'none'; continue }
     row.g.style.display = ''
@@ -219,15 +242,17 @@ function render() {
 
 let acc = 0
 const MAX_STEPS = 4
+/* 抄参考实现：**限流 100ms**（最快 10 步/秒）。
+   比"一次事件跨多步"更稳 —— 快速滚动时也是匀速推进，不会突然跳一大截。 */
+let lastWheel = 0
 window.addEventListener('wheel', (e) => {
   e.preventDefault()
-  acc += e.deltaY
-  const dir = Math.sign(acc)
-  const steps = Math.floor(Math.abs(acc) / 100)
-  if (steps < 1) return
-  acc -= dir * steps * 100
-  const k = Math.min(steps, MAX_STEPS)
-  for (let i = 0; i < k; i++) offset += dir
+  const now = Date.now()
+  if (now - lastWheel < 100) return
+  const dir = Math.sign(e.deltaY)
+  if (!dir) return
+  lastWheel = now
+  offset += dir
   render()
 }, { passive: false })
 window.addEventListener('keydown', (e) => {
