@@ -73,23 +73,25 @@ function inkFor(hex) {
 /* 圆上横坐标：x = -√(LIMIT² - y²)，y 越靠外 |x| 越小 */
 const xAt = (y) => -Math.sqrt(Math.max(0.01, LIMIT * LIMIT - y * y))
 
-/* ★ 条 = "圆环切片"：左边界是盘缘弧（半径 LIMIT），右边界是**同心的内弧**（半径 xRi）。
-   这样滚动时**两条边都在变**（每行的曲率都不同）—— 这才是看得见的"形变"。
-   之前只让左边贴弧、右边是直线，看起来就像"切了一块贴上去"（用户实测原话）。
-   附带好处：整个形状由两条同心弧夹出，**天然不可能超出圆盘**，不用再做钳制。 */
-function rowPath(yT, yB, xRi) {
-  const xLt = xAt(yT), xLb = xAt(yB)
-  const rIn = Math.max(8, xRi)
-  const xRt = -Math.sqrt(Math.max(0.01, rIn * rIn - yT * yT))
-  const xRb = -Math.sqrt(Math.max(0.01, rIn * rIn - yB * yB))
+/* 条的形状：**普通胶囊**（两端圆头）—— 回到用户认可的 v5 形态。
+   "左边贴弧、随滚动形变"已放弃：152px 下"两边都弯 + 横向装下文字"数学上不成立
+   （内弧半径会小到 8px，等于直线）。详见 docs/弧排交互-问题简报.md
+   位置：左端按**这一行最靠外的那条边**取弦位（不能按中心 y，否则上下角出圆、宽度被迫砍没） */
+function capsulePath(yT, yB, xL, xR) {
+  const r = Math.min((yB - yT) / 2, (xR - xL) / 2)
   return [
-    `M ${xLt.toFixed(2)} ${yT.toFixed(2)}`,
-    `L ${xRt.toFixed(2)} ${yT.toFixed(2)}`,
-    `A ${rIn.toFixed(2)} ${rIn.toFixed(2)} 0 0 1 ${xRb.toFixed(2)} ${yB.toFixed(2)}`,
-    `L ${xLb.toFixed(2)} ${yB.toFixed(2)}`,
-    `A ${LIMIT} ${LIMIT} 0 0 0 ${xLt.toFixed(2)} ${yT.toFixed(2)}`,
+    `M ${(xL + r).toFixed(2)} ${yT.toFixed(2)}`,
+    `L ${(xR - r).toFixed(2)} ${yT.toFixed(2)}`,
+    `A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(xR - r).toFixed(2)} ${yB.toFixed(2)}`,
+    `L ${(xL + r).toFixed(2)} ${yB.toFixed(2)}`,
+    `A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(xL + r).toFixed(2)} ${yT.toFixed(2)}`,
     'Z',
   ].join(' ')
+}
+/* 四个角都在圆内才允许（整条完整可见，不做裁切） */
+function fitsAll(x, yT, yB, w) {
+  const pts = [[x, yT], [x + w, yT], [x, yB], [x + w, yB]]
+  return pts.every((p) => p[0] * p[0] + p[1] * p[1] <= LIMIT * LIMIT)
 }
 
 /* 常驻 5 个 <g>，**不再每次清空重建** —— 清空会把元素连同过渡一起扔掉
@@ -136,12 +138,14 @@ function render() {
 
     const wName = lv.named ? c.name.length * lv.nm + 6 : 0
     const wDur = lv.named ? c.dur.length * lv.du * 0.62 + 4 : 0
-    const barW = lv.named ? (wName + wDur + lv.pad) : 26     // 条的径向厚度
-    const xRi = LIMIT - barW                                  // 内弧半径
+    const wantW = lv.named ? (wName + wDur + lv.pad) : 26
+    /* 左端贴弦位（按最外边缘算）→ 完全贴紧盘缘且不出圆 */
+    const yOuter = Math.max(Math.abs(yT), Math.abs(yB))
+    const half = Math.sqrt(Math.max(0, LIMIT * LIMIT - yOuter * yOuter))
+    const xL = -half
+    let w = wantW
+    while (w > 16 && !fitsAll(xL, yT, yB, w)) w -= 1
 
-    slot.path.setAttribute('d', rowPath(yT, yB, xRi))
-    slot.path.setAttribute('fill', c.color)
-    slot.path.setAttribute('stroke', a === 0 ? 'rgba(255,255,255,.34)' : 'none')
     slot.path.setAttribute('stroke-width', a === 0 ? '1.5' : '0')
     slot.path.style.cursor = 'pointer'
     const idx = i
@@ -149,14 +153,12 @@ function render() {
 
     const ink = inkFor(c.color)
     if (lv.named) {
-      const xIn = Math.max(xAt(yT), xAt(yB)) + 9
+      const xIn = xL + 9
       slot.t1.style.display = ''; slot.t2.style.display = ''
       slot.t1.setAttribute('x', xIn.toFixed(2)); slot.t1.setAttribute('y', yc.toFixed(2))
       slot.t1.setAttribute('font-size', lv.nm); slot.t1.setAttribute('font-weight', '600')
       slot.t1.setAttribute('fill', ink); slot.t1.textContent = c.name
-      const rIn2 = Math.max(8, xRi)
-      const xRight = Math.max(-Math.sqrt(Math.max(0.01, rIn2*rIn2 - yT*yT)), -Math.sqrt(Math.max(0.01, rIn2*rIn2 - yB*yB)))
-      slot.t2.setAttribute('x', (xRight - 9).toFixed(2)); slot.t2.setAttribute('y', yc.toFixed(2))
+      slot.t2.setAttribute('x', (xL + w - 9).toFixed(2)); slot.t2.setAttribute('y', yc.toFixed(2))
       slot.t2.setAttribute('font-size', lv.du); slot.t2.setAttribute('font-weight', '500')
       slot.t2.setAttribute('fill', ink); slot.t2.textContent = c.dur
     } else {
