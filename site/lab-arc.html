@@ -145,6 +145,7 @@ function render() {
     const xL = -half
     let w = wantW
     while (w > 16 && !fitsAll(xL, yT, yB, w)) w -= 1
+    slot.path.setAttribute('d', capsulePath(yT, yB, xL, xL + w))
 
     slot.path.setAttribute('stroke-width', a === 0 ? '1.5' : '0')
     slot.path.style.cursor = 'pointer'
