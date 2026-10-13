@@ -15,6 +15,8 @@
   #stage{position:relative;width:260px;height:380px;display:flex;align-items:center;justify-content:center;}
 
   #dial{position:relative;width:152px;height:152px;border-radius:50%;
+    /* 形状本来就卡在圆内（fitsAll 保证），这里只裁掉**模糊向外晕出**的那一点 */
+    overflow:hidden;
     background:radial-gradient(circle at 50% 42%,rgba(255,255,255,.07),rgba(255,255,255,.015) 62%),
       rgba(18,19,22,.92);
     border:1px solid rgba(255,255,255,.10);
@@ -101,7 +103,8 @@ function fitsAll(x, yT, yB, w) {
 const POOL = []
 for (let i = 0; i < 5; i++) {
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-  g.style.transition = 'transform 280ms cubic-bezier(.25,.8,.3,1), opacity 220ms ease'
+  g.style.transition = 'transform 300ms cubic-bezier(.22,1,.36,1), opacity 220ms ease'
+  g.style.willChange = 'transform, opacity'
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
   const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text')
   const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text')
@@ -132,7 +135,8 @@ function render() {
     const r = lv.h / 2
     slot.g.style.display = ''
     slot.g.setAttribute('opacity', String(lv.op))
-    slot.g.setAttribute('filter', lv.blur ? 'blur(' + lv.blur + 'px)' : '')
+    const bv = lv.blur ? 'blur(' + lv.blur + 'px)' : ''
+    if (slot._b !== bv) { slot.g.setAttribute('filter', bv); slot._b = bv }   // blur 最贵，尤其不能反复设
     /* 位移用**绝对**值。原来是增量（yc−上次yc）却又按新位置重绘路径 → 两者叠加 → 上下抽风 */
     slot.g.style.transform = 'translate(0, ' + yc.toFixed(2) + 'px)'
 
@@ -145,8 +149,9 @@ function render() {
     const xL = -half
     let w = wantW
     while (w > 16 && !fitsAll(xL, yT, yB, w)) w -= 1
-    slot.path.setAttribute('d', capsulePath(yT - yc, yB - yc, xL, xL + w))
-    slot.path.setAttribute('fill', c.color)
+    const dstr = capsulePath(yT - yc, yB - yc, xL, xL + w)
+    if (slot._d !== dstr) { slot.path.setAttribute('d', dstr); slot._d = dstr }   // 没变就不写，避免中途重栅格化
+    if (slot._f !== c.color) { slot.path.setAttribute('fill', c.color); slot._f = c.color }
     slot.path.setAttribute('stroke', a === 0 ? 'rgba(255,255,255,.34)' : 'none')
     slot.path.setAttribute('stroke-width', a === 0 ? '1.5' : '0')
 
