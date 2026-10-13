@@ -105,14 +105,30 @@ function fitsAll(x, yT, yB, w) {
    （用户报"动效怎么不见了"就是这个原因）。
      位置：靠 transform 过渡 → 平滑滑动
      形状：左右边界的 d 每次重算 → **形状本身随滚动连续变化**（这才是"形变"） */
-const POOL = []
-/* 槽位绑定**分类下标**（而不是"当前可见的第 k 个"）——
-   这样每条永远用同一个 <g>，位置连续变化，不会因为顺序变化而重新分配。
-   数量 = 分类数：lab 里分类是固定的，够用；真实组件里改成按需扩容即可。 */
-for (let i = 0; i < CATS.length; i++) {
+/* ══════════════════════════════════════════════════════════════════
+   渲染层：**整条带子刚性平移**（对齐桌面组件那份丝滑列表的做法）
+   ------------------------------------------------------------------
+   之前是"每条各自算位置、各自播过渡"——快速滚动时它们在途中互相穿过，
+   必然重叠（用户三番两次截图报的就是这个）。
+   改成：所有条按**固定间距**排在同一条 `<g>` 里，滚动只做**一次平移**。
+   **刚性体不可能和自己碰撞** → 从根上消灭重叠。
+
+   无限循环用"两份拷贝 + 到界瞬间归位"：
+     · 拷贝两份，视觉完全一样
+     · 归位那一刻关掉 transition —— 因为画面一模一样，**看不出任何跳变**
+   ══════════════════════════════════════════════════════════════════ */
+/* ROW_H / VISIBLE 已在文件顶部定义，这里直接复用 */
+const COPIES = 2
+const N = CATS.length
+
+const strip = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+strip.style.willChange = 'transform'
+svg.appendChild(strip)
+
+/* 建 2N 条，位置固定不变（局部 y = (k-2)*ROW_H，给上方留出 VISIBLE 个位） */
+const ROWS = []
+for (let k = 0; k < N * COPIES; k++) {
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-  g.style.transition = 'transform 300ms cubic-bezier(.22,1,.36,1), opacity 220ms ease'
-  g.style.willChange = 'transform, opacity'
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
   const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text')
   const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text')
@@ -121,80 +137,84 @@ for (let i = 0; i < CATS.length; i++) {
   t2.setAttribute('text-anchor', 'end')
   t2.setAttribute('opacity', '0.78')
   g.appendChild(path); g.appendChild(t1); g.appendChild(t2)
-  svg.appendChild(g)
-  POOL.push({ g, path, t1, t2 })
+  strip.appendChild(g)
+  ROWS.push({ g, path, t1, t2, K: k, cat: CATS[k % N], baseY: (k - VISIBLE) * ROW_H })
 }
 
+let lastShift = null
 function render() {
-  const n = CATS.length
-  for (let i = 0; i < n; i++) {
-    const slot = POOL[i]
-    /* ★ d 归到最近的那个"等价位置"，落在 [-n/2, n/2)。
-       上一轮我直接用了 i-offset（完全不取模）→ 滚到末尾就没有分类可显示了
-       （用户看到"只剩一两条"甚至"全空"）。
-       这里保留有界性，但**跳变点落在 |d|=n/2**，而 n/2=3.5 > VISIBLE=2
-       → 跳变发生在看不见的地方，所以观感依然连续。 */
-    let d = i - offset
-    d = d - n * Math.round(d / n)
+  const sel = ((offset % N) + N) % N                 // 当前选中的分类下标
+  const shift = sel * ROW_H                          // 整条带子要平移多少
+  if (shift !== lastShift) {
+    if (lastShift !== null && Math.abs(shift - lastShift) > ROW_H * 1.5) {
+      /* 到界归位：关掉过渡直接跳到另一端 —— 两份拷贝一模一样，看不出跳变 */
+      strip.style.transition = 'none'
+      strip.style.transform = 'translate(0, ' + (-shift) + 'px)'
+      void strip.getBBox()                            // 强制失效，确保下一帧不带过渡
+      strip.style.transition = 'transform 300ms cubic-bezier(.22,1,.36,1)'
+    } else {
+      strip.style.transition = 'transform 300ms cubic-bezier(.22,1,.36,1)'
+      strip.style.transform = 'translate(0, ' + (-shift) + 'px)'
+    }
+    lastShift = shift
+  }
+
+  for (let r = 0; r < ROWS.length; r++) {
+    const row = ROWS[r]
+    /* 这一条离带子中心的**格数差**：把 sel 对应的那条对齐到 0 */
+    let d = (row.K - VISIBLE) - sel
+    d = d - N * Math.round(d / N)                    // 归到 [-N/2, N/2)：决定等级用
     const a = Math.abs(d)
-    if (a > VISIBLE + 0.5) {
-      /* ⚠️ 隐藏时必须**关掉过渡并直接归位**：
-         它的位置此刻从 +n/2 跳到 -n/2，若还播动画就会横穿整个盘、
-         从别的条身上碾过去 —— 那是"堆到一起"的另一半原因。 */
-      slot.g.style.display = 'none'
-      slot.g.style.transition = 'none'
-      slot.g.style.transform = 'translate(0, ' + (d * ROW_H).toFixed(2) + 'px)'
-      continue
-    }
-    if (slot.g.style.transition === 'none') {
-      slot.g.style.transition = 'transform 300ms cubic-bezier(.22,1,.36,1), opacity 220ms ease'
-    }
-    slot.g.style.display = ''
-    const c = CATS[i]
-    const lv = LV[Math.min(2, Math.round(a))] || LV[2]
-    const yc = d * ROW_H
+    if (a > VISIBLE + 0.5) { row.g.style.display = 'none'; continue }
+    row.g.style.display = ''
+
+    const c = row.cat
+    const lv = LV[Math.min(2, Math.round(a))]
+    const yc = row.baseY + VISIBLE * ROW_H            // 局部坐标（带子内固定位置）
     const yT = yc - lv.h / 2, yB = yc + lv.h / 2
 
     const bv = lv.blur ? 'blur(' + lv.blur + 'px)' : ''
-    if (slot._b !== bv) { slot.g.setAttribute('filter', bv); slot._b = bv }
-    slot.g.setAttribute('opacity', String(lv.op))
-    slot.g.style.transform = 'translate(0, ' + yc.toFixed(2) + 'px)'
+    if (row._b !== bv) { row.g.setAttribute('filter', bv); row._b = bv }
+    row.g.setAttribute('opacity', String(lv.op))
 
     const wName = lv.named ? c.name.length * lv.nm + 6 : 0
     const wDur = lv.named ? c.dur.length * lv.du * 0.62 + 4 : 0
     const wantW = lv.named ? (wName + wDur + lv.pad) : 26
-    const yOuter = Math.max(Math.abs(yT), Math.abs(yB))
+    /* 左端贴弦位：按**这一条最靠外的那条边**算（用它在盘上的实际 y） */
+    const realY = (row.K - VISIBLE - sel) * ROW_H
+    const ryT = realY - lv.h / 2, ryB = realY + lv.h / 2
+    const yOuter = Math.max(Math.abs(ryT), Math.abs(ryB))
     const half = Math.sqrt(Math.max(0, LIMIT * LIMIT - yOuter * yOuter))
     const xL = -half
     let w = wantW
-    while (w > 16 && !fitsAll(xL, yT, yB, w)) w -= 1
+    while (w > 16 && !fitsAll(xL, ryT, ryB, w)) w -= 1
 
     const dstr = capsulePath(yT - yc, yB - yc, xL, xL + w)
-    if (slot._d !== dstr) { slot.path.setAttribute('d', dstr); slot._d = dstr }
-    if (slot._f !== c.color) { slot.path.setAttribute('fill', c.color); slot._f = c.color }
+    if (row._d !== dstr) { row.path.setAttribute('d', dstr); row._d = dstr }
+    if (row._f !== c.color) { row.path.setAttribute('fill', c.color); row._f = c.color }
     const st = Math.round(a) === 0 ? 'rgba(255,255,255,.34)' : 'none'
-    if (slot._s !== st) {
-      slot.path.setAttribute('stroke', st)
-      slot.path.setAttribute('stroke-width', st === 'none' ? '0' : '1.5')
-      slot._s = st
+    if (row._s !== st) {
+      row.path.setAttribute('stroke', st)
+      row.path.setAttribute('stroke-width', st === 'none' ? '0' : '1.5')
+      row._s = st
     }
-    slot.path.style.cursor = 'pointer'
-    slot.path.onclick = () => { offset = i; render() }
+    row.path.style.cursor = 'pointer'
+    row.path.onclick = () => { offset = offset + d; render() }
 
     const ink = inkFor(c.color)
     if (lv.named) {
-      slot.t1.style.display = ''; slot.t2.style.display = ''
-      slot.t1.setAttribute('x', (xL + 9).toFixed(2)); slot.t1.setAttribute('y', '0')
-      slot.t1.setAttribute('font-size', lv.nm); slot.t1.setAttribute('font-weight', '600')
-      slot.t1.setAttribute('fill', ink); slot.t1.textContent = c.name
-      slot.t2.setAttribute('x', (xL + w - 9).toFixed(2)); slot.t2.setAttribute('y', '0')
-      slot.t2.setAttribute('font-size', lv.du); slot.t2.setAttribute('font-weight', '500')
-      slot.t2.setAttribute('fill', ink); slot.t2.textContent = c.dur
+      row.t1.style.display = ''; row.t2.style.display = ''
+      row.t1.setAttribute('x', (xL + 9).toFixed(2)); row.t1.setAttribute('y', '0')
+      row.t1.setAttribute('font-size', lv.nm); row.t1.setAttribute('font-weight', '600')
+      row.t1.setAttribute('fill', ink); row.t1.textContent = c.name
+      row.t2.setAttribute('x', (xL + w - 9).toFixed(2)); row.t2.setAttribute('y', '0')
+      row.t2.setAttribute('font-size', lv.du); row.t2.setAttribute('font-weight', '500')
+      row.t2.setAttribute('fill', ink); row.t2.textContent = c.dur
     } else {
-      slot.t1.style.display = 'none'; slot.t2.style.display = 'none'
+      row.t1.style.display = 'none'; row.t2.style.display = 'none'
     }
   }
-  document.getElementById('who').textContent = '当前 · ' + CATS[((offset % n) + n) % n].name
+  document.getElementById('who').textContent = '当前 · ' + CATS[sel].name
 }
 
 let acc = 0
