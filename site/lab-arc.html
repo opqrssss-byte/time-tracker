@@ -129,9 +129,26 @@ function render() {
   const n = CATS.length
   for (let i = 0; i < n; i++) {
     const slot = POOL[i]
-    const d = i - offset                       // ★ 不取模：连续变化
+    /* ★ d 归到最近的那个"等价位置"，落在 [-n/2, n/2)。
+       上一轮我直接用了 i-offset（完全不取模）→ 滚到末尾就没有分类可显示了
+       （用户看到"只剩一两条"甚至"全空"）。
+       这里保留有界性，但**跳变点落在 |d|=n/2**，而 n/2=3.5 > VISIBLE=2
+       → 跳变发生在看不见的地方，所以观感依然连续。 */
+    let d = i - offset
+    d = d - n * Math.round(d / n)
     const a = Math.abs(d)
-    if (a > VISIBLE + 0.5) { slot.g.style.display = 'none'; continue }
+    if (a > VISIBLE + 0.5) {
+      /* ⚠️ 隐藏时必须**关掉过渡并直接归位**：
+         它的位置此刻从 +n/2 跳到 -n/2，若还播动画就会横穿整个盘、
+         从别的条身上碾过去 —— 那是"堆到一起"的另一半原因。 */
+      slot.g.style.display = 'none'
+      slot.g.style.transition = 'none'
+      slot.g.style.transform = 'translate(0, ' + (d * ROW_H).toFixed(2) + 'px)'
+      continue
+    }
+    if (slot.g.style.transition === 'none') {
+      slot.g.style.transition = 'transform 300ms cubic-bezier(.22,1,.36,1), opacity 220ms ease'
+    }
     slot.g.style.display = ''
     const c = CATS[i]
     const lv = LV[Math.min(2, Math.round(a))] || LV[2]
