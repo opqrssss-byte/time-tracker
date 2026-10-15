@@ -62,8 +62,8 @@ function renderDial(frac, prog, focusIdx) {
       if (!isAdd) out += `<text x="${(s.xL + s.w - 6).toFixed(2)}" y="${yc.toFixed(2)}" font-size="${duK}" font-weight="500" fill="${ic}" opacity="${(Math.round(0.78 * txtOp * 20) / 20).toFixed(2)}" text-anchor="end" dominant-baseline="central">${esc(s.du)}</text>`
     }
     if (k % N === focusIdx && prog > 0 && s.a < 0.5) {
-      const w = Math.max(0, (s.w - 12) * prog)
-      out += `<rect x="${(s.xL + 6).toFixed(2)}" y="${(yc + s.p.h / 2 - 5.5).toFixed(2)}" width="${w.toFixed(2)}" height="2.5" rx="1.5" fill="rgba(255,255,255,.92)"/>`
+      const lay = arcProgLayout(s.xL, s.p.h, s.w, prog)
+      out += `<rect x="${lay.x.toFixed(2)}" y="${(yc + lay.y).toFixed(2)}" width="${lay.w.toFixed(2)}" height="${lay.h}" rx="1.2" fill="rgba(255,255,255,.92)"/>`
     }
   }
   return out

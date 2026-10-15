@@ -102,6 +102,15 @@ for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 10, 15, 20, 31]) {
         ok(Math.abs(s.w - s.wText) < 1e-9, 'center-stretch(v16.8?) N=' + N + ' frac=' + frac + ' k=' + k)
         ok(Math.abs(s.p.h - 24) < 1e-9, 'center-h N=' + N + ' frac=' + frac + ' k=' + k)
       }
+      if (a < 0.5) {                                 // 进度线出现的行：布局必须在条内、与文字留量
+        const lay = arcProgLayout(s.xL, s.p.h, s.w, 1)   // prog=1 = 最长（最坏情况）
+        ok(lay.y >= s.p.nm / 2 + 1.0, 'prog-text-gap N=' + N + ' frac=' + frac + ' k=' + k + ' y=' + lay.y.toFixed(2) + ' emB=' + (s.p.nm / 2).toFixed(2))
+        ok(lay.y + lay.h <= s.p.h / 2 - 1.0, 'prog-bottom-gap N=' + N + ' frac=' + frac + ' k=' + k)
+        const rr = s.p.h / 2, ccx = s.xL + rr
+        ok((lay.x - ccx) * (lay.x - ccx) + (lay.y + lay.h) * (lay.y + lay.h) <= rr * rr + 1e-9, 'prog-cap-left N=' + N + ' frac=' + frac + ' k=' + k)
+        const rcx = s.xL + s.w - rr
+        ok((lay.x + lay.w - rcx) * (lay.x + lay.w - rcx) + (lay.y + lay.h) * (lay.y + lay.h) <= rr * rr + 1e-9, 'prog-cap-right N=' + N + ' frac=' + frac + ' k=' + k)
+      }
       if (items[k % N].id === '__add__') ok(s.du === '', 'add-dur N=' + N + ' frac=' + frac + ' k=' + k)
     }
     ok(rows.length >= 5 && rows.length <= 6, 'vis-count N=' + N + ' frac=' + frac + ' vis=' + rows.length)

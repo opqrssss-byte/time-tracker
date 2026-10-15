@@ -933,6 +933,19 @@ function arcFoldGoal(curGoal, g, n) {
   if (!n) return g
   return g + Math.round((curGoal - g) / n) * n
 }
+/* 确认进度线（选中条底部那条白线）的布局（纯函数）：贴条底、避开两端圆角、与文字留量。
+   用户真机反馈过"白线和文字有点互相遮罩"（2026-10-15）：旧口径线顶在 h/2-5.5，
+   与 13px 文字的 em 盒底边（h/2-6.5）只差 0.7px，反锯齿一渲染就粘上。
+   现在：线顶 = h/2-4.0（与文字 em 盒留 ≥1px、与字面墨迹留 ≥2px），
+   线底 = h/2-1.6（贴底但不压圆头），左右各内衬 7px（起点落在圆头起始之内，不越出胶囊）。
+   返回相对行中心的局部坐标（paintArc 再加行基位）。 */
+function arcProgLayout(xL, h, w, prog) {
+  const r = h / 2                 // 胶囊圆头半径（宽条时 = h/2）
+  const gap = 1.6                 // 离条底留量
+  const hh = 2.4                  // 线高
+  const inset = 7                 // 左右内衬（> r - sqrt(r² - (r-gap)²) 的圆角安全内衬）
+  return { x: xL + inset, y: r - gap - hh, w: Math.max(0, (w - inset * 2) * prog), h: hh }
+}
 /* ═══ ARC-PICK:PURE-END ═══ */
 
 /* 条内文字色：亮底用深字、暗底用白字。阈值 .62 —— 再低会把中蓝/中绿也判成深字，整排就乱 */
@@ -1020,8 +1033,8 @@ function buildArcStrip() {
     arcRows.push(row)
   }
   arcProgRect = document.createElementNS(NS, 'rect')
-  arcProgRect.setAttribute('height', '2.5')
-  arcProgRect.setAttribute('rx', '1.5')
+  arcProgRect.setAttribute('height', '2.4')      // 高度/圆角与 arcProgLayout 保持一致
+  arcProgRect.setAttribute('rx', '1.2')
   arcProgRect.setAttribute('fill', 'rgba(255,255,255,.92)')
   arcProgRect.style.display = 'none'
   arcStrip.appendChild(arcProgRect)
@@ -1100,14 +1113,15 @@ function paintArc() {
     } else {
       row.t1.style.display = 'none'; row.t2.style.display = 'none'
     }
-    /* 确认进度线：只画在焦点行底部（strip 坐标 = baseY + 条内偏移） */
+    /* 确认进度线：只画在焦点行底部（strip 坐标 = baseY + 条内偏移）。
+       布局（贴底 / 避圆角 / 与文字留量）走 arcProgLayout 纯函数 —— 见 PURE 块与验证脚本 */
     if (arcProgRect && row.K % n === selIdx && prog > 0 && s.a < 0.5) {
-      const w = Math.max(0, (s.w - 12) * prog)
+      const lay = arcProgLayout(s.xL, s.p.h, s.w, prog)
       drewProg = true
-      arcProgRect.style.display = w > 0.5 ? '' : 'none'
-      const x = (s.xL + 6).toFixed(2)
-      const y = ((row.K - ARC_VISIBLE) * ARC_ROW_H + s.p.h / 2 - 5.5).toFixed(2)
-      const ww = w.toFixed(2)
+      arcProgRect.style.display = lay.w > 0.5 ? '' : 'none'
+      const x = lay.x.toFixed(2)
+      const y = ((row.K - ARC_VISIBLE) * ARC_ROW_H + lay.y).toFixed(2)
+      const ww = lay.w.toFixed(2)
       if (arcProgRect._x !== x) { arcProgRect.setAttribute('x', x); arcProgRect._x = x }
       if (arcProgRect._y !== y) { arcProgRect.setAttribute('y', y); arcProgRect._y = y }
       if (arcProgRect._w !== ww) { arcProgRect.setAttribute('width', ww); arcProgRect._w = ww }
