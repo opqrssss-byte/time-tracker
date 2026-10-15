@@ -639,10 +639,11 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 }
 #widget-pick.hidden { opacity: 0; pointer-events: none; }
 
-/* 切换态：环 + 中心读数整体淡出，让弧排独占表盘
-   （原来靠上面的黑底遮罩盖住；黑框移除后改为显式隐藏，与弧排的淡入淡出同步） */
+/* 切换态 / 新增表单态：环 + 中心读数整体淡出，让弧排或表单独占表盘
+   （原来靠深色遮罩盖住；黑框移除后改为显式隐藏，与弧排的淡入淡出同步） */
 #widget-ring-wrap { transition: opacity 160ms ease; }
-#widget-plate.arc-open #widget-ring-wrap { opacity: 0; pointer-events: none; }
+#widget-plate.arc-open #widget-ring-wrap,
+#widget-plate.add-open #widget-ring-wrap { opacity: 0; pointer-events: none; }
 
 /* 弧排（v16.7 样品移植）：SVG 坐标 = 盘坐标（viewBox -76..76，圆心即原点），
    绝对定位在浮层正中 = 表盘正中。全部几何压在 LIMIT=72 内 → 永不超出圆盘；
@@ -657,6 +658,37 @@ textarea:focus { border-color: var(--primary); background: #fff; }
   font-family: "SF Pro Display", -apple-system, "Segoe UI", system-ui, sans-serif;
 }
 #widget-arc path { pointer-events: auto; cursor: pointer; }
+
+/* ── 新增项目 · 表盘内色环表单（样品 A 方向已选型，2026-10-15 移植）──
+   8 个色段绕环（与主环同款：r54 / 宽 11 / 圆头）+ 盘中央真 input（所见即所得、字随色变）。
+   显隐走全局 .hidden（display:none，与其它浮层一致）；下方一行小字是
+   「回车/Esc 操作提示 + 错误」共用位（错误时 .err 变红），只展示、不拦截指针。 */
+#widget-add-ring {
+  position: absolute; left: 50%; top: 50%;
+  width: 152px; height: 152px;
+  transform: translate(-50%, -50%);
+}
+#widget-add-ring svg { position: absolute; left: 0; top: 0; width: 152px; height: 152px; }
+.add-seg {
+  cursor: pointer;
+  transition: transform 160ms ease, opacity 160ms ease, filter 160ms ease;
+  transform-box: view-box; transform-origin: 50% 50%;
+}
+#widget-add-name {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 104px; padding: 0; margin: 0; border: 0; outline: 0; background: transparent;
+  box-sizing: border-box; text-align: center;
+  font-family: "SF Pro Display", -apple-system, "Segoe UI", system-ui, sans-serif;
+  font-size: 15px; font-weight: 600; line-height: 1.35;
+  color: #4F8CFF;                                  /* 实际颜色由 JS 随所选色实时写入 */
+}
+#widget-add-name::placeholder { color: rgba(255, 255, 255, .28); font-weight: 500; }
+#widget-add-note {
+  position: absolute; left: 50%; top: calc(100% + 10px); transform: translateX(-50%);
+  white-space: nowrap; font-size: 11px; letter-spacing: .02em;
+  color: rgba(255, 255, 255, .30); pointer-events: none;
+}
+#widget-add-note.err { color: #FF8A8A; }
 
 /* 列表区避开底部那一格 */
 #widget-pick-list { position: absolute; left: 0; right: 0; top: 0; bottom: 66px; }

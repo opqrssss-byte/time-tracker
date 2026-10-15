@@ -37,6 +37,15 @@
       <svg id="widget-arc" viewBox="-76 -76 152 152" aria-hidden="true"></svg>
     </div>
 
+    <!-- 新增项目 · 表盘内色环表单（2026-10-15 选型「A · 色环」移植）：
+         8 色段绕环 + 滚轮转色 + 盘中央真输入（所见即所得、字随色变）+ 回车添加 / Esc 取消。
+         下方一行小字 = 操作提示（错误时变红）。旧的下方面板 #widget-add-panel 保留作回退。 -->
+    <div id="widget-add-ring" class="hidden">
+      <svg viewBox="-76 -76 152 152" aria-hidden="true"><g id="add-ring-g" transform="rotate(-90 0 0)"></g></svg>
+      <input id="widget-add-name" type="text" maxlength="20" placeholder="分类名称" autocomplete="off" spellcheck="false">
+      <div id="widget-add-note">回车添加 · Esc 取消</div>
+    </div>
+
     <button id="widget-add-cat" type="button" title="新增分类">+</button>
   </div>
 

@@ -544,7 +544,7 @@ async function enterWidget() {
   $('widget-login').classList.add('hidden')
   $('widget-plate').classList.remove('hidden')
   // 桌面常驻时也能新增分类（右键菜单入口，旧 exe 无此通道则忽略）
-  if (isElectron && window.electronAPI.onAddCat) window.electronAPI.onAddCat(() => openWidgetAddPanel())
+  if (isElectron && window.electronAPI.onAddCat) window.electronAPI.onAddCat(() => openWidgetAddForm())
   await loadCategories()
   await refreshRunning()
   refreshTodayStats()
@@ -607,6 +607,7 @@ const canManualDrag = () => isElectron && !!window.electronAPI.dragStart
 function beginDrag(e) {
   if (e.button !== 0) return
   if (e.target.closest('.widget-panel')) return     // 面板内（输入框等）不拖
+  if (e.target.closest('#widget-add-name')) return  // 表盘内表单的输入框：拖拽留给选字
   if (!canManualDrag()) return                      // 旧壳：走 -webkit-app-region
   dragging = true
   dragMoved = false
@@ -638,8 +639,8 @@ $('widget-plate').addEventListener('click', (e) => {
 
 /* 面板统一开关（新增分类 / 其他分类 / 快速标签） */
 function anyPanelOpen() {
-  return ['widget-add-panel', 'widget-others-panel', 'widget-tagbar']
-    .some((id) => !$(id).classList.contains('hidden'))
+  return ['widget-add-panel', 'widget-others-panel', 'widget-tagbar', 'widget-add-ring']
+    .some((id) => { const el = $(id); return el && !el.classList.contains('hidden') })
 }
 function openPanel(id) {
   clearFocus()             // 面板语义优先，取消滚轮选中
@@ -657,6 +658,7 @@ function closePanel(id) {
 }
 function hideAllPanels() {
   ;['widget-add-panel', 'widget-others-panel', 'widget-tagbar'].forEach((id) => $(id).classList.add('hidden'))
+  closeWidgetAddForm()
 }
 
 function elapsedSec() {
@@ -1165,7 +1167,7 @@ function paintPickProgress() {
 function onArcRowClick(id) {
   cancelConfirm()
   clearFocus()
-  if (id === '__add__') { openWidgetAddPanel(); return }
+  if (id === '__add__') { openWidgetAddForm(); return }
   if (id === '__other__') { openOthersPanel(); return }
   clearHover()
   onSectorClick(id)
@@ -1349,7 +1351,7 @@ function finishConfirm() {
   const id = focusCatId
   if (!id) return
   if (id === '__other__') { clearFocus(); openOthersPanel(); return }
-  if (id === '__add__') { clearFocus(); openWidgetAddPanel(); return }   // 浮层末位的「新增项目」
+  if (id === '__add__') { openWidgetAddForm(); return }   // 弧排末位的「新增项目」
   clearFocus()
   applySectorAction(id, { viaWheel: true })
 }
@@ -1443,23 +1445,130 @@ function renderSwatches() {
   })
 }
 
-function openWidgetAddPanel() {
-  clearHover()
-  $('widget-new-cat-name').value = ''
-  setAddError('')
-  renderSwatches()
-  openPanel('widget-add-panel')
-  $('widget-new-cat-name').focus()
+/* ---------- 新增项目 · 表盘内色环表单（样品 v1「A · 色环」已选型，2026-10-15 移植） ----------
+   需求（用户原话）："新增项目的窗口也做到表盘内部"。选定方向 = 色环：
+     · 8 个色段绕环（与主环同款形态：r54 / 宽 11 / 圆头），选中段放大 + 同色辉光
+     · 滚轮转色（沿用主滚轮"累积一档、余数保留"的手感）、点色段直选
+     · 盘中央是真 input：所见即所得，文字实时用所选色（caret 同色）
+     · 回车 = 添加（IME 组合期不触发）· Esc = 取消（丢弃未保存）
+   入口（全部收敛到 openWidgetAddForm）：弧排滚到「新增项目」停留/点按、盘底 + 按钮、右键菜单。
+   旧的盘下面板 #widget-add-panel / renderSwatches 保留作回退（当前不再打开）。 */
+const ADD_RING_R = 54
+let addRingEls = []
+let addColorIdx = 0
+let addWheelAccum = 0
+let addWheelSign = 0
+
+/* 建环（懒建一次）：8 个色段 = 8 个虚线圆，与主环 renderRing 同一套做法 */
+function buildAddRing() {
+  const g = $('add-ring-g')
+  if (!g || addRingEls.length) return
+  const NS = 'http://www.w3.org/2000/svg'
+  const CIRC = 2 * Math.PI * ADD_RING_R
+  const n = WIDGET_SWATCH_COLORS.length
+  const SEG = CIRC / n
+  const GAP = 4
+  WIDGET_SWATCH_COLORS.forEach((col, i) => {
+    const c = document.createElementNS(NS, 'circle')
+    c.setAttribute('r', ADD_RING_R)
+    c.setAttribute('fill', 'none')
+    c.setAttribute('stroke', col)
+    c.setAttribute('stroke-width', '11')
+    c.setAttribute('stroke-linecap', 'round')
+    c.setAttribute('stroke-dasharray', (SEG - GAP).toFixed(2) + ' ' + (CIRC - SEG + GAP).toFixed(2))
+    c.setAttribute('stroke-dashoffset', (-(i * SEG + GAP / 2)).toFixed(2))
+    c.setAttribute('class', 'add-seg')
+    c.addEventListener('click', () => {
+      setAddRingColor(i)
+      const inp = $('widget-add-name')
+      if (inp) inp.focus({ preventScroll: true })     // 选色不打断打字流
+    })
+    g.appendChild(c)
+    addRingEls.push(c)
+  })
 }
 
-function closeWidgetAddPanel() { closePanel('widget-add-panel') }
+function setAddRingColor(i) {
+  const n = WIDGET_SWATCH_COLORS.length
+  addColorIdx = ((i % n) + n) % n
+  addRingEls.forEach((el, k) => {
+    const sel = k === addColorIdx
+    el.style.opacity = sel ? '1' : '.42'
+    el.style.transform = sel ? 'scale(1.16)' : 'scale(1)'
+    el.style.filter = sel ? 'drop-shadow(0 0 6px ' + WIDGET_SWATCH_COLORS[k] + ')' : ''
+  })
+  widgetSwatchColor = WIDGET_SWATCH_COLORS[addColorIdx]   // 与保存流程共用同一状态源
+  const inp = $('widget-add-name')
+  if (inp) { inp.style.color = widgetSwatchColor; inp.style.caretColor = widgetSwatchColor }
+}
 
-/* 校验/错误反馈走面板内的内联错误行（提示条在面板打开时会被隐藏，不能用来报错） */
+function openWidgetAddForm() {
+  const wrap = $('widget-add-ring')
+  if (!wrap) return
+  const plate = $('widget-plate')
+  /* ⚠️ 先挂 add-open 再 clearFocus：从弧排进来时 clearFocus 会卸下 arc-open，
+     不先挂住类的话，环会在弧排 ↔ 表单的交接空档里闪一下 */
+  if (plate) plate.classList.add('add-open')
+  clearFocus()
+  clearHover()
+  hideToast()
+  buildAddRing()
+  const inp = $('widget-add-name')
+  if (inp) inp.value = ''
+  setAddError('')
+  setAddRingColor(Math.max(0, WIDGET_SWATCH_COLORS.indexOf(widgetSwatchColor)))
+  wrap.classList.remove('hidden')
+  if (inp) inp.focus()
+  renderCenter()
+}
+
+function closeWidgetAddForm() {
+  const wrap = $('widget-add-ring')
+  if (wrap) wrap.classList.add('hidden')
+  const plate = $('widget-plate')
+  if (plate) plate.classList.remove('add-open')
+  /* 关键：表单里的输入框即使被隐藏仍会持有焦点 → 主滚轮的"输入框聚焦"守卫会一直吞掉滚轮 */
+  const inp = $('widget-add-name')
+  if (inp && document.activeElement === inp) inp.blur()
+  addWheelAccum = 0
+  renderCenter()
+}
+
+/* 校验/错误反馈走表盘下方那行小字（提示条在表单打开时会被隐藏，不能用来报错）。
+   同一个元素两种状态：无错误 = 操作提示，有错误 = 红字。 */
 function setAddError(msg) {
-  const el = $('widget-add-error')
+  const el = $('widget-add-note')
   if (!el) return
-  el.textContent = msg || ''
-  el.classList.toggle('hidden', !msg)
+  el.textContent = msg || '回车添加 · Esc 取消'
+  el.classList.toggle('err', !!msg)
+}
+
+/* 滚轮转色：沿用主滚轮"累积一档、余数保留"的步进（触控板小增量先攒，
+   不会一次跳过好几个色）；方向翻转清零。 */
+const addWrapEl = $('widget-add-ring')
+if (addWrapEl) {
+  addWrapEl.addEventListener('wheel', (e) => {
+    if (addWrapEl.classList.contains('hidden')) return
+    e.preventDefault()
+    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY
+    if (!dy) return
+    const sign = Math.sign(dy)
+    if (sign !== addWheelSign) { addWheelAccum = 0; addWheelSign = sign }
+    addWheelAccum += dy
+    const steps = Math.trunc(addWheelAccum / WHEEL_STEP)
+    if (!steps) return
+    addWheelAccum -= steps * WHEEL_STEP
+    setAddRingColor(addColorIdx + steps)
+  }, { passive: false })
+}
+
+const addNameEl = $('widget-add-name')
+if (addNameEl) {
+  addNameEl.addEventListener('keydown', (e) => {
+    /* 回车 = 添加；IME 组合中（isComposing / keyCode 229）不触发，防止选字时误提交。
+       Esc 不在这里处理：走全局 Escape（统一收表单与浮层），见下方事件接线。 */
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) saveWidgetCategory()
+  })
 }
 
 /* ── 会话失效的识别与兜底（2026-10-12 补）────────────────────────────────
@@ -1486,13 +1595,13 @@ function handleAuthExpired() {
 }
 
 async function saveWidgetCategory() {
-  const name = $('widget-new-cat-name').value.trim()
+  const name = $('widget-add-name').value.trim()
   if (!name) { setAddError('请输入分类名称'); return }
   if (IS_LOCAL) {                                  // 演示 / 沙盒：只加在本地
     const newCat = { id: (IS_SANDBOX ? 'sb-c' : 'demo-c') + Date.now(), name, color: widgetSwatchColor, sort_order: categories.length + 1 }
     categories.push(newCat)
     setAddError('')
-    closeWidgetAddPanel()
+    closeWidgetAddForm()
     showToast('分类已添加' + LOCAL_SUFFIX)
     renderRing(); renderCenter()
     sandboxSave()
@@ -1504,7 +1613,7 @@ async function saveWidgetCategory() {
     .insert({ name, color: widgetSwatchColor, sort_order: maxSort + 1 }).select()
   if (error) {
     /* 会话过期要给"人话 + 出路"，不能只说"添加失败" —— 组件上没有别的登录入口 */
-    if (isAuthExpired(error)) { closeWidgetAddPanel(); handleAuthExpired(); return }
+    if (isAuthExpired(error)) { closeWidgetAddForm(); handleAuthExpired(); return }
     /* 带上具体原因：只说"添加失败，请重试"等于没说，用户没法反馈也没法自查
        （2026-10-12：用户报"添加没法用"，界面上却什么都看不到） */
     setAddError(error.code === '23505'
@@ -1513,7 +1622,7 @@ async function saveWidgetCategory() {
     return
   }
   setAddError('')
-  closeWidgetAddPanel()                            // 先收面板再提示，避免提示条被面板挡住
+  closeWidgetAddForm()                             // 先收表单再提示，避免提示条被表盘挡住
   showToast('分类已添加')
   await loadCategories()
   renderRing()
@@ -1585,16 +1694,16 @@ $('widget-plate').addEventListener('contextmenu', (e) => {
   if (isElectron) window.electronAPI.menu()
 })
 
-$('widget-add-cat').addEventListener('click', openWidgetAddPanel)
-$('widget-new-cat-name').addEventListener('input', () => setAddError(''))   // 重新输入即清掉错误
-$('btn-widget-cat-save').addEventListener('click', saveWidgetCategory)
-$('btn-widget-cat-cancel').addEventListener('click', closeWidgetAddPanel)
+$('widget-add-cat').addEventListener('click', openWidgetAddForm)
+$('widget-add-name').addEventListener('input', () => setAddError(''))       // 重新输入即清掉错误
+$('btn-widget-cat-save').addEventListener('click', saveWidgetCategory)      // 旧面板按钮：保留绑定（回退用）
+$('btn-widget-cat-cancel').addEventListener('click', closeWidgetAddForm)
 $('btn-widget-others-close').addEventListener('click', () => closePanel('widget-others-panel'))
 
 window.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !IS_WIDGET) return
   clearFocus()             // Esc：取消滚轮选中（安全阀）
-  closePanel('widget-add-panel')
+  closeWidgetAddForm()     // Esc：取消新增表单（丢弃未保存）
   closePanel('widget-others-panel')
   clearHover()
 })
