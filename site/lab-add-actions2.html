@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新增项目 · 收尾交互 B 族优化（4 版对照）</title>
+<style>
+  /* ══════════════════════════════════════════════════════════════
+     新增项目 · 收尾交互 B 族优化（2026-10-15 v3）
+     ──────────────────────────────────────────────────────────────
+     诊断：B 原版"s顺眼但不对味"——它用的是**通用界面按钮**的词汇
+     （等大空心描边圆 + 灰调 + 细线图标），而本产品的词汇是：
+     色块 / 胶囊 / 同色辉光 / 大小分级（弧排条、色环、选中扇区全是这套）。
+     三个优化版各用一种方式把 B 拉回产品语言：
+       B  原版（对照）   ✕/✓ 等大、空心描边 —— 通用按钮味
+       B1 荧光圆钮       ✓ 大一号 + 同色辉光 + 白发丝描边（挪弧排"选中条"三件套）
+       B2 极简两极       实心大「＋」（盘底 + 按钮的血统）+ 无底灰「✕」（极简一极）
+       B3 胶囊钮         两个小胶囊 = 产品历来所有按钮的形状（旧面板 / ＋新增项目）
+     共同行为：滚轮/点色段选色 · 盘中央打字 · 回车=添加 · Esc=取消 · 点钮即动作。
+     ⚠️ 按钮必须挂在未旋转的层里（色段 ring 组带 rotate(-90°)）；
+        可点入口必须都在盘内（盘外在桌面置顶窗里点击穿透）。
+   ══════════════════════════════════════════════════════════════ */
+  html, body {
+    margin: 0; min-height: 100%; background: #0a0b0d;
+    font-family: "SF Pro Display", -apple-system, "Segoe UI", system-ui, sans-serif;
+    color: #fff;
+  }
+  #page { display: flex; flex-direction: column; align-items: center; padding: 42px 20px 54px; gap: 28px; }
+  h1 { margin: 0; font-size: 15px; font-weight: 500; color: rgba(255,255,255,.9); letter-spacing: .02em; }
+  #row { display: flex; flex-wrap: wrap; justify-content: center; gap: 24px 34px; max-width: 900px; }
+  .col { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .dial {
+    position: relative; width: 152px; height: 152px; border-radius: 50%;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 42%, rgba(255,255,255,.07), rgba(255,255,255,.015) 62%),
+      rgba(18,19,22,.92);
+    border: 1px solid rgba(255,255,255,.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .dial svg { position: absolute; left: 0; top: 0; width: 152px; height: 152px; }
+  .seg { cursor: pointer; transition: transform 160ms ease, filter 160ms ease;
+         transform-box: view-box; transform-origin: 50% 50%; }
+  .btnw { cursor: pointer; transition: opacity 140ms ease; }
+  .btnw:hover { opacity: .82; }
+  .dial.pulse { animation: pulse 300ms ease; }
+  @keyframes pulse { 50% { transform: scale(.965); } }
+  .inp {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    width: 92px; padding: 0; border: 0; outline: 0; background: transparent;
+    box-sizing: border-box; text-align: center;
+    font-family: inherit; font-size: 15px; font-weight: 600; line-height: 1.35;
+  }
+  .inp::placeholder { color: rgba(255,255,255,.28); font-weight: 500; }
+  .cap { max-width: 196px; text-align: center; }
+  .cap b { display: block; font-size: 13px; font-weight: 600; color: rgba(255,255,255,.86); margin-bottom: 5px; letter-spacing: .02em; }
+  .cap span { font-size: 11px; line-height: 1.65; color: rgba(255,255,255,.45); }
+  .note { font-size: 11px; color: rgba(255,255,255,.32); text-align: center; line-height: 1.8; max-width: 640px; }
+  #toast {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-8px);
+    background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.14);
+    backdrop-filter: blur(10px); border-radius: 999px; padding: 7px 16px;
+    font-size: 12px; color: rgba(255,255,255,.9); opacity: 0; pointer-events: none;
+    transition: opacity 200ms ease, transform 200ms ease; white-space: nowrap;
+  }
+  #toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div id="page">
+  <h1>新增项目 · 收尾交互 B 族优化 · 4 版对照</h1>
+  <div id="row">
+
+    <div class="col">
+      <div class="dial" id="dial-0">
+        <svg viewBox="-76 -76 152 152" aria-hidden="true"><g id="ring-0" transform="rotate(-90 0 0)"></g><g id="ui-0"></g></svg>
+        <input id="inp-0" class="inp" maxlength="20" placeholder="分类名称" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="cap"><b>B · 原版（对照）</b><span>✕ / ✓ 等大空心描边<br>通用按钮味 —— 你说不对味的就是它</span></div>
+    </div>
+
+    <div class="col">
+      <div class="dial" id="dial-1">
+        <svg viewBox="-76 -76 152 152" aria-hidden="true"><g id="ring-1" transform="rotate(-90 0 0)"></g><g id="ui-1"></g></svg>
+        <input id="inp-1" class="inp" maxlength="20" placeholder="分类名称" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="cap"><b>B1 · 荧光圆钮</b><span>✓ 大一号 + 同色辉光 + 白发丝描边<br>把弧排「选中条」的三件套挪过来</span></div>
+    </div>
+
+    <div class="col">
+      <div class="dial" id="dial-2">
+        <svg viewBox="-76 -76 152 152" aria-hidden="true"><g id="ring-2" transform="rotate(-90 0 0)"></g><g id="ui-2"></g></svg>
+        <input id="inp-2" class="inp" maxlength="20" placeholder="分类名称" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="cap"><b>B2 · 极简两极</b><span>实心大「＋」+ 无底灰「✕」<br>＋ 是盘底那个按钮的血统，✕ 收成一行字</span></div>
+    </div>
+
+    <div class="col">
+      <div class="dial" id="dial-3">
+        <svg viewBox="-76 -76 152 152" aria-hidden="true"><g id="ring-3" transform="rotate(-90 0 0)"></g><g id="ui-3"></g></svg>
+        <input id="inp-3" class="inp" maxlength="20" placeholder="分类名称" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="cap"><b>B3 · 胶囊钮</b><span>两个小胶囊 = ✓ / ✕<br>产品历来所有按钮都是胶囊，最"原生"的形状</span></div>
+    </div>
+
+  </div>
+  <div class="note">诊断：原版的问题是它用了**通用界面**的词汇（空心描边、等大、灰调、细线图标）；<br>
+    本产品的词汇是 色块 / 胶囊 / 同色辉光 / 大小分级 —— 三个优化版各用一种方式把 B 拉回产品语言。<br>
+    共同行为：滚轮/点色段选色 · 盘中央打字 · 回车 = 添加 · Esc = 取消。样品不写数据。</div>
+</div>
+<div id="toast"></div>
+
+<script>
+const NS = 'http://www.w3.org/2000/svg'
+const PALETTE = ['#4F8CFF', '#9B6DFF', '#2FBF71', '#F2A93B', '#FF5A5A', '#23B8D5', '#F06EAA', '#8a91a3']
+const $ = (id) => document.getElementById(id)
+
+function inkFor(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''))
+  if (!m) return '#fff'
+  const L = (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)) / 255
+  return L > 0.62 ? 'rgba(12,14,18,.92)' : 'rgba(255,255,255,.97)'
+}
+let toastTimer = 0
+function toast(msg) {
+  const t = $('toast')
+  t.textContent = msg
+  t.classList.add('on')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => t.classList.remove('on'), 1800)
+}
+function pulse(dial) { dial.classList.remove('pulse'); void dial.offsetWidth; dial.classList.add('pulse') }
+
+/* 通用：色环 + 输入/滚轮/键盘（同前几版样品） */
+function createDial(dialId, ringId, uiId, inpId, initCi, makeUI) {
+  const dial = $(dialId), ringG = $(ringId), uiG = $(uiId), inp = $(inpId)
+  const els = []
+  const CIRC = 2 * Math.PI * 54, SEG = CIRC / 8, GAP = 4
+  PALETTE.forEach((col, i) => {
+    const c = document.createElementNS(NS, 'circle')
+    c.setAttribute('r', '54')
+    c.setAttribute('fill', 'none')
+    c.setAttribute('stroke', col)
+    c.setAttribute('stroke-width', '11')
+    c.setAttribute('stroke-linecap', 'round')
+    c.setAttribute('stroke-dasharray', (SEG - GAP).toFixed(2) + ' ' + (CIRC - SEG + GAP).toFixed(2))
+    c.setAttribute('stroke-dashoffset', (-(i * SEG + GAP / 2)).toFixed(2))
+    c.setAttribute('class', 'seg')
+    c.addEventListener('click', () => { setCi(i); inp.focus({ preventScroll: true }) })
+    ringG.appendChild(c)
+    els.push(c)
+  })
+  let ci = initCi
+  const api = { inp, dial, onColor: null, getCi: () => ci }
+  function setCi(next) {
+    ci = ((next % 8) + 8) % 8
+    els.forEach((el, k) => {
+      const sel = k === ci
+      el.style.transform = sel ? 'scale(1.08)' : 'scale(1)'
+      el.style.filter = sel ? 'drop-shadow(0 0 6px ' + PALETTE[k] + ')' : ''
+    })
+    inp.style.color = PALETTE[ci]
+    inp.style.caretColor = PALETTE[ci]
+    if (api.onColor) api.onColor(ci)
+  }
+  api.setCi = setCi
+  const ok = () => {
+    const name = inp.value.trim()
+    if (!name) { toast('先给新项目起个名字'); inp.focus(); return }
+    toast('已添加「' + name + '」 · ' + PALETTE[ci]); pulse(dial)
+  }
+  const cancel = () => { inp.value = ''; toast('已取消（未保存）'); inp.focus() }
+  api.ok = ok
+  api.cancel = cancel
+  if (makeUI) makeUI(uiG, api)
+  dial.addEventListener('wheel', (e) => { e.preventDefault(); setCi(ci + (e.deltaY > 0 ? 1 : -1)) }, { passive: false })
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) ok()
+    if (e.key === 'Escape') cancel()
+  })
+  dial.addEventListener('mousedown', (e) => { if (e.target !== inp) setTimeout(() => inp.focus({ preventScroll: true }), 0) })
+  setCi(initCi)
+  return api
+}
+
+/* 图标路径 */
+const ICON_X = (x, y, s = 3) => `M${x - s} ${y - s} L${x + s} ${y + s} M${x + s} ${y - s} L${x - s} ${y + s}`
+const ICON_OK = (x, y, s = 3.2) => `M${x - s} ${y + 0.2} L${x - s * 0.35} ${y + s * 0.8} L${x + s} ${y - s * 0.8}`
+const ICON_PLUS = (x, y, s = 4) => `M${x - s} ${y} L${x + s} ${y} M${x} ${y - s} L${x} ${y + s}`
+
+/* 圆钮构建器：返回 { wrap, c, p }（c=圆、p=图标，便于随色更新） */
+function mkCircleBtn(g, x, y, r, fill, stroke, sw, iconPath, iconStroke, iconW, glow, onClick) {
+  const wrap = document.createElementNS(NS, 'g')
+  wrap.setAttribute('class', 'btnw')
+  const hit = document.createElementNS(NS, 'circle')
+  hit.setAttribute('cx', x); hit.setAttribute('cy', y); hit.setAttribute('r', r + 3)
+  hit.setAttribute('fill', 'transparent')
+  const c = document.createElementNS(NS, 'circle')
+  c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', r)
+  c.setAttribute('fill', fill)
+  if (stroke) { c.setAttribute('stroke', stroke); c.setAttribute('stroke-width', sw) }
+  const p = document.createElementNS(NS, 'path')
+  p.setAttribute('d', iconPath)
+  p.setAttribute('fill', 'none')
+  p.setAttribute('stroke', iconStroke)
+  p.setAttribute('stroke-width', iconW)
+  p.setAttribute('stroke-linecap', 'round')
+  p.setAttribute('stroke-linejoin', 'round')
+  if (glow) wrap.style.filter = 'drop-shadow(0 0 6px ' + glow + ')'
+  wrap.appendChild(hit); wrap.appendChild(c); wrap.appendChild(p)
+  wrap.addEventListener('click', onClick)
+  g.appendChild(wrap)
+  return { wrap, c, p }
+}
+
+/* ── B · 原版（对照）：等大空心描边圆钮 ── */
+createDial('dial-0', 'ring-0', 'ui-0', 'inp-0', 1, (g, api) => {
+  mkCircleBtn(g, -14, 31, 9, 'rgba(255,255,255,.10)', 'rgba(255,255,255,.28)', 1,
+    ICON_X(-14, 31), 'rgba(255,255,255,.78)', 1.7, null, () => api.cancel())
+  const ok = mkCircleBtn(g, 14, 31, 9, PALETTE[1], null, 0,
+    ICON_OK(14, 31), inkFor(PALETTE[1]), 1.7, null, () => api.ok())
+  api.onColor = (ci) => {
+    ok.c.setAttribute('fill', PALETTE[ci])
+    ok.p.setAttribute('stroke', inkFor(PALETTE[ci]))
+  }
+})
+
+/* ── B1 · 荧光圆钮：大一号 + 同色辉光 + 白发丝描边（弧排"选中条"三件套）── */
+createDial('dial-1', 'ring-1', 'ui-1', 'inp-1', 0, (g, api) => {
+  mkCircleBtn(g, -15, 31, 8.5, 'rgba(255,255,255,.10)', null, 0,
+    ICON_X(-15, 31), 'rgba(255,255,255,.60)', 1.6, null, () => api.cancel())
+  const ok = mkCircleBtn(g, 14, 31, 11, PALETTE[0], 'rgba(255,255,255,.38)', 0.8,
+    ICON_OK(14, 31), inkFor(PALETTE[0]), 1.8, PALETTE[0], () => api.ok())
+  api.onColor = (ci) => {
+    ok.c.setAttribute('fill', PALETTE[ci])
+    ok.p.setAttribute('stroke', inkFor(PALETTE[ci]))
+    ok.wrap.style.filter = 'drop-shadow(0 0 6px ' + PALETTE[ci] + ')'
+  }
+})
+
+/* ── B2 · 极简两极：实心大「＋」+ 无底灰「✕」── */
+createDial('dial-2', 'ring-2', 'ui-2', 'inp-2', 2, (g, api) => {
+  /* 无底 ✕：只有一行字形 + 隐形命中区 */
+  const xw = document.createElementNS(NS, 'g')
+  xw.setAttribute('class', 'btnw')
+  const xhit = document.createElementNS(NS, 'circle')
+  xhit.setAttribute('cx', -17); xhit.setAttribute('cy', 31); xhit.setAttribute('r', 11)
+  xhit.setAttribute('fill', 'transparent')
+  const xp = document.createElementNS(NS, 'path')
+  xp.setAttribute('d', ICON_X(-17, 31, 3.4))
+  xp.setAttribute('fill', 'none')
+  xp.setAttribute('stroke', 'rgba(255,255,255,.45)')
+  xp.setAttribute('stroke-width', '1.6')
+  xp.setAttribute('stroke-linecap', 'round')
+  xw.appendChild(xhit); xw.appendChild(xp)
+  xw.addEventListener('click', () => api.cancel())
+  g.appendChild(xw)
+  /* 实心大 ＋（盘底 + 按钮的血统，大色块语言） */
+  const ok = mkCircleBtn(g, 13, 31, 12, PALETTE[2], null, 0,
+    ICON_PLUS(13, 31, 4.2), inkFor(PALETTE[2]), 2.2, PALETTE[2], () => api.ok())
+  api.onColor = (ci) => {
+    ok.c.setAttribute('fill', PALETTE[ci])
+    ok.p.setAttribute('stroke', inkFor(PALETTE[ci]))
+    ok.wrap.style.filter = 'drop-shadow(0 0 7px ' + PALETTE[ci] + ')'
+  }
+})
+
+/* ── B3 · 胶囊钮：产品历代按钮的形状 ── */
+createDial('dial-3', 'ring-3', 'ui-3', 'inp-3', 3, (g, api) => {
+  /* 取消胶囊（更小、幽灵底） */
+  const cw = document.createElementNS(NS, 'g')
+  cw.setAttribute('class', 'btnw')
+  const chit = document.createElementNS(NS, 'rect')
+  chit.setAttribute('x', '-30'); chit.setAttribute('y', '22'); chit.setAttribute('width', '28')
+  chit.setAttribute('height', '18'); chit.setAttribute('fill', 'transparent')
+  const ccap = document.createElementNS(NS, 'rect')
+  ccap.setAttribute('x', '-27'); ccap.setAttribute('y', '24.5'); ccap.setAttribute('width', '22')
+  ccap.setAttribute('height', '13'); ccap.setAttribute('rx', '6.5')
+  ccap.setAttribute('fill', 'rgba(255,255,255,.09)')
+  const cp = document.createElementNS(NS, 'path')
+  cp.setAttribute('d', ICON_X(-16, 31, 2.8))
+  cp.setAttribute('fill', 'none')
+  cp.setAttribute('stroke', 'rgba(255,255,255,.60)')
+  cp.setAttribute('stroke-width', '1.6')
+  cp.setAttribute('stroke-linecap', 'round')
+  cw.appendChild(chit); cw.appendChild(ccap); cw.appendChild(cp)
+  cw.addEventListener('click', () => api.cancel())
+  g.appendChild(cw)
+  /* 添加胶囊（更大、实时色、辉光） */
+  const okw = document.createElementNS(NS, 'g')
+  okw.setAttribute('class', 'btnw')
+  const ohit = document.createElementNS(NS, 'rect')
+  ohit.setAttribute('x', '-1'); ohit.setAttribute('y', '21.5'); ohit.setAttribute('width', '32')
+  ohit.setAttribute('height', '19'); ohit.setAttribute('fill', 'transparent')
+  const ocap = document.createElementNS(NS, 'rect')
+  ocap.setAttribute('x', '1'); ocap.setAttribute('y', '23.5'); ocap.setAttribute('width', '26')
+  ocap.setAttribute('height', '15'); ocap.setAttribute('rx', '7.5')
+  const op = document.createElementNS(NS, 'path')
+  op.setAttribute('d', ICON_OK(14, 31, 3))
+  op.setAttribute('fill', 'none')
+  op.setAttribute('stroke-width', '1.8')
+  op.setAttribute('stroke-linecap', 'round')
+  op.setAttribute('stroke-linejoin', 'round')
+  okw.appendChild(ohit); okw.appendChild(ocap); okw.appendChild(op)
+  okw.addEventListener('click', () => api.ok())
+  g.appendChild(okw)
+  api.onColor = (ci) => {
+    ocap.setAttribute('fill', PALETTE[ci])
+    op.setAttribute('stroke', inkFor(PALETTE[ci]))
+    okw.style.filter = 'drop-shadow(0 0 6px ' + PALETTE[ci] + ')'
+  }
+})
+
+window.addEventListener('load', () => $('inp-1').focus({ preventScroll: true }))
+</script>
+</body>
+</html>
