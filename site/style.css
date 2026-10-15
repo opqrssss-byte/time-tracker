@@ -655,6 +655,20 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 }
 #widget-pick.hidden { opacity: 0; pointer-events: none; }
 
+/* 弧排（v16.7 样品移植）：SVG 坐标 = 盘坐标（viewBox -76..76，圆心即原点），
+   绝对定位在浮层正中 = 表盘正中。全部几何压在 LIMIT=72 内 → 永不超出圆盘；
+   行的位置由 app.js 的单一浮点 pickPos 派生（rAF 驱动，无 CSS transition）。
+   pointer-events:none 在容器上、auto 在条上 —— 只有荧光条可点，条间空隙不挡。 */
+#widget-arc {
+  position: absolute; left: 50%; top: 50%;
+  width: 152px; height: 152px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  user-select: none;
+  font-family: "SF Pro Display", -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+#widget-arc path { pointer-events: auto; cursor: pointer; }
+
 /* 列表区避开底部那一格 */
 #widget-pick-list { position: absolute; left: 0; right: 0; top: 0; bottom: 66px; }
 

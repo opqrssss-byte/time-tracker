@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%230A0B0D' stroke='%234F8CFF' stroke-width='4'/%3E%3Cpath d='M18 32 A14 14 0 0 1 46 32' stroke='%234F8CFF' stroke-width='7' fill='none'/%3E%3C/svg%3E">
+<title>弧排样品 v16.6</title>
+<style>
+  /* ══════════════════════════════════════════════════════════════
+     弧排样品 · v16.6（动效连续化）
+     ──────────────────────────────────────────────────────────────
+     v16.5 已根治"两端条弹出"（几何全 fit）与"不够流畅"（惯性滚动）。
+     本轮把**动效做出来**—— v16.5 的外观是三档离散跳变（滚动中条的高度/
+     字号/透明/模糊瞬间切换），观感"一格一格"；v16.6 改为：
+       · 外观随偏移量 a 连续插值（高度/字号/透明/模糊/条宽全部渐变，
+         条靠近中心平滑放大、远离平滑缩小模糊 —— iOS 滚轮式"呼吸"）
+       · 文字在外圈平滑淡出（a 0.9→1.5），条宽随后平滑收窄（1.5→1.8），
+         全程无跳变、文字永在条内
+       · 落格带轻微弹性回弹（easeOutBack，过冲 ~2.4px）
+       · 确认时核心区名称变绿 + 微放大
+     保留：跟手+惯性滚动、刚性平移带子、2 拷贝取模、荧光 glow、0.9s 确认。
+   ══════════════════════════════════════════════════════════════ */
+  html,body{margin:0;height:100%;background:#0a0b0d;
+    font-family:"SF Pro Display",-apple-system,"Segoe UI",system-ui,sans-serif;
+    display:flex;align-items:center;justify-content:center;}
+  #stage{position:relative;width:260px;height:380px;display:flex;align-items:center;justify-content:center;}
+
+  #dial{position:relative;width:152px;height:152px;border-radius:50%;
+    overflow:hidden;
+    background:radial-gradient(circle at 50% 42%,rgba(255,255,255,.07),rgba(255,255,255,.015) 62%),
+      rgba(18,19,22,.92);
+    border:1px solid rgba(255,255,255,.10);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+  #shapes{position:absolute;left:0;top:0;width:152px;height:152px;}
+
+  /* 核心区：焦点名称（偏右避开条内时长）。确认后名称变绿 + 微放大 */
+  #core{position:absolute;left:50%;top:50%;transform:translate(calc(-50% + 14px),-50%);
+    text-align:center;pointer-events:none;opacity:.9;transition:opacity 200ms ease;
+    text-shadow:0 1px 3px rgba(0,0,0,.7);}
+  #who{font-size:11px;color:rgba(255,255,255,.6);letter-spacing:.02em;
+    transition:color 240ms ease, transform 240ms ease;}
+  #core.confirmed{opacity:1;}
+  #core.confirmed #who{color:#7ee2a8;transform:scale(1.08);}
+
+  #hint{position:absolute;bottom:10px;width:100%;text-align:center;
+    font-size:11px;color:rgba(255,255,255,.30);}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="dial">
+    <svg id="shapes" viewBox="-76 -76 152 152" aria-hidden="true"></svg>
+    <div id="core"><div id="who">工作</div></div>
+  </div>
+  <div id="hint">滚轮滚动 · 上下键步进 · 点按选中 · 松手滑行 · 停下 0.9s 确认</div>
+</div>
+<script>
+const CATS = [
+  { name: '工作', color: '#4F8CFF', dur: '2:15' },
+  { name: '学习', color: '#9B6DFF', dur: '45m' },
+  { name: '运动', color: '#2FBF71', dur: '20m' },
+  { name: '生活', color: '#F2A93B', dur: '1:05' },
+  { name: '阅读', color: '#23B8D5', dur: '35m' },
+  { name: '写作', color: '#F06EAA', dur: '10m' },
+  { name: '摸鱼', color: '#8a91a3', dur: '5m' },
+]
+
+const R = 76, SAFE = 4, LIMIT = R - SAFE   // 弧半径：条的左边界就是这条弧
+/* 几何（v16.5 定稿）：ROW_H=24 + 条高 ≤24 → 最外圈（a≤2.5 → 中心 ±60）
+   边 ≤ 67.5 ≤ 72 → 所有可见条任意时刻四角在圆内，无弹出、无裁切 */
+const ROW_H = 24
+const VISIBLE = 2
+
+/* ★ v16.6 等级插值表：外观随 a=|物理偏移| 连续渐变（不再三档跳变）。
+   行 i 与 i+1 之间线性插值；第 4 行是"消失端"（a≥2.5 已不可见，仅作插值终点）。
+   h：条高；nm/du：名称/时长字号；op：条整体透明度；blur：模糊半径 */
+const LV = [
+  { h: 24, nm: 13,   du: 11,   op: 1.00, blur: 0.0 },   // a=0 中心（最大/清晰）
+  { h: 20, nm: 11,   du: 9,    op: 0.94, blur: 0.0 },   // a=1 上下各一
+  { h: 16, nm: 10,   du: 8.5,  op: 0.60, blur: 1.6 },   // a=2 更外（模糊）
+  { h: 14, nm: 9,    du: 8,    op: 0.30, blur: 2.6 },   // a=3 消失端
+]
+function paramsAt(a) {
+  const i = Math.min(2, Math.floor(a))
+  const t = a - i
+  const A = LV[i], B = LV[i + 1]
+  return {
+    h: A.h + (B.h - A.h) * t,
+    nm: A.nm + (B.nm - A.nm) * t,
+    du: A.du + (B.du - A.du) * t,
+    op: A.op + (B.op - A.op) * t,
+    blur: A.blur + (B.blur - A.blur) * t,
+  }
+}
+
+let sel = 0
+/* pos = 唯一的带子位置状态（浮点格数）。初始 -VISIBLE → 焦点落 CATS[0]（工作） */
+let pos = -VISIBLE
+const svg = document.getElementById('shapes')
+const NS = 'http://www.w3.org/2000/svg'
+
+function inkFor(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''))
+  if (!m) return '#fff'
+  const L = (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)) / 255
+  return L > 0.62 ? 'rgba(12,14,18,.92)' : 'rgba(255,255,255,.97)'
+}
+/* 条的形状：普通胶囊（两端圆头，用户认可的 v5 形态）。左端按最外那条边取弦位 */
+function capsulePath(yT, yB, xL, xR) {
+  const r = Math.min((yB - yT) / 2, (xR - xL) / 2)
+  return [
+    `M ${(xL + r).toFixed(2)} ${yT.toFixed(2)}`,
+    `L ${(xR - r).toFixed(2)} ${yT.toFixed(2)}`,
+    `A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(xR - r).toFixed(2)} ${yB.toFixed(2)}`,
+    `L ${(xL + r).toFixed(2)} ${yB.toFixed(2)}`,
+    `A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(xL + r).toFixed(2)} ${yT.toFixed(2)}`,
+    'Z',
+  ].join(' ')
+}
+/* 四角都在圆内。浮点容差 1e-6（贴弦时左角平方和恰 = LIMIT²） */
+function fitsAll(x, yT, yB, w) {
+  const T = LIMIT * LIMIT + 1e-6
+  const pts = [[x, yT], [x + w, yT], [x, yB], [x + w, yB]]
+  return pts.every((p) => p[0] * p[0] + p[1] * p[1] <= T)
+}
+
+/* ══════════════════════════════════════════════════════════════
+   渲染层：整条带子刚性平移（v14/v15 定稿）+ 2 拷贝取模归位
+   ══════════════════════════════════════════════════════════════ */
+const COPIES = 2
+const N = CATS.length
+
+const strip = document.createElementNS(NS, 'g')
+strip.style.willChange = 'transform'
+svg.appendChild(strip)
+
+const ROWS = []
+for (let k = 0; k < N * COPIES; k++) {
+  const g = document.createElementNS(NS, 'g')
+  const baseY = (k - VISIBLE) * ROW_H
+  g.setAttribute('transform', 'translate(0,' + baseY + ')')
+  const path = document.createElementNS(NS, 'path')
+  const t1 = document.createElementNS(NS, 'text')
+  const t2 = document.createElementNS(NS, 'text')
+  t1.setAttribute('dominant-baseline', 'central')
+  t2.setAttribute('dominant-baseline', 'central')
+  t2.setAttribute('text-anchor', 'end')
+  g.appendChild(path); g.appendChild(t1); g.appendChild(t2)
+  strip.appendChild(g)
+  ROWS.push({ g, path, t1, t2, K: k, cat: CATS[k % N], baseY })
+}
+
+/* ══════════════════════════════════════════════════════════════
+   运动层：跟手 + 惯性滑行 + 弹性落格（v16.5 惯性 + v16.6 easeOutBack）
+   ══════════════════════════════════════════════════════════════ */
+let target = 0
+let rafId = 0
+let inId = 0
+let vel = 0
+let lastWheel = 0
+const easeOutCubic = (t) => Math.pow(t - 1, 3) + 1
+/* 轻微过冲的落格：峰值约 1.1（越目标 0.1 格 ≈ 2.4px，柔和回弹） */
+const easeOutBack = (t) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2) }
+const FRICTION = 0.92
+const STOP_VEL = 0.02
+const MAX_VEL = 1.3
+
+function stopAnim() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0 } }
+function stopInertia() { if (inId) { cancelAnimationFrame(inId); inId = 0 } }
+
+function animateTo() {
+  stopAnim(); stopInertia()
+  const from = pos, to = target
+  const dist = Math.abs(to - from)
+  if (dist < 0.001) { pos = to; paint(); touchConfirm(); return }
+  const dur = Math.min(420, 160 + dist * 80)
+  const t0 = performance.now()
+  const tick = (now) => {
+    const t = (now - t0) / dur
+    if (t < 1) { pos = from + easeOutBack(t) * (to - from); paint(); rafId = requestAnimationFrame(tick) }
+    else { stopAnim(); pos = to; paint(); touchConfirm() }
+  }
+  rafId = requestAnimationFrame(tick)
+}
+function goTo(to) { target = to; animateTo() }
+
+function startInertia() {
+  if (inId) return
+  const step = () => {
+    const now = performance.now()
+    if (now - lastWheel > 50) {
+      if (Math.abs(vel) < STOP_VEL) { stopInertia(); goTo(Math.round(pos)); return }
+      pos += vel
+      vel *= FRICTION
+      paint()
+    }
+    inId = requestAnimationFrame(step)
+  }
+  inId = requestAnimationFrame(step)
+}
+
+/* 900ms 停留确认 */
+let confirmTimer = 0
+const CONFIRM_MS = 900
+function touchConfirm() {
+  clearTimeout(confirmTimer)
+  const core = document.getElementById('core')
+  core.classList.remove('confirmed')
+  confirmTimer = setTimeout(() => core.classList.add('confirmed'), CONFIRM_MS)
+}
+
+function paint() {
+  const frac = ((pos % N) + N) % N
+  strip.style.transform = 'translate(0, ' + (-frac * ROW_H).toFixed(2) + 'px)'
+  sel = (((Math.round(pos) + VISIBLE) % N) + N) % N
+
+  for (let r = 0; r < ROWS.length; r++) {
+    const row = ROWS[r]
+    const dRaw = (row.K - VISIBLE) - frac
+    const a = Math.abs(dRaw)
+    if (a > VISIBLE + 0.5) { row.g.style.display = 'none'; continue }
+    row.g.style.display = ''
+
+    const c = row.cat
+    const p = paramsAt(a)
+    const yc = row.baseY + VISIBLE * ROW_H
+    const yT = yc - p.h / 2, yB = yc + p.h / 2
+
+    /* 记忆化（量化阈值防反复栅格化）：
+       blur 0.25px 步、op 0.05 步、字号 0.5 步 */
+    const bv = p.blur > 0.08 ? 'blur(' + (Math.round(p.blur * 4) / 4) + 'px)' : ''
+    if (row._b !== bv) { row.g.setAttribute('filter', bv); row._b = bv }
+    const op = Math.round(p.op * 20) / 20
+    if (row._o !== op) { row.g.setAttribute('opacity', String(op)); row._o = op }
+
+    /* 文字宽度（紧凑估算：中文 1em、数字 0.6em，各 +3px 余量）；
+       文字在 a<1.5 内显示，1.5→1.8 条宽平滑收窄到纯色窄条 26 */
+    const wName = c.name.length * p.nm + 3
+    const wDur = c.dur.length * p.du * 0.6 + 3
+    const wText = wName + wDur + 14
+    const fadeT = Math.max(0, Math.min(1, (a - 0.9) / 0.6))    // 0.9 起淡出 → 1.5 全隐
+    const shrinkT = Math.max(0, Math.min(1, (a - 1.5) / 0.3))  // 1.5 起收窄 → 1.8 到 26
+    const wantW = a < 1.5 ? wText : wText + (26 - wText) * shrinkT
+
+    /* 左端贴弦（几何保证 yOuter ≤ 67.5 < 72 → 永不退化，无弹出） */
+    const realY = dRaw * ROW_H
+    const ryT = realY - p.h / 2, ryB = realY + p.h / 2
+    const yOuter = Math.max(Math.abs(ryT), Math.abs(ryB))
+    const half = Math.sqrt(Math.max(0, LIMIT * LIMIT - yOuter * yOuter))
+    const xL = -half
+    let w = wantW
+    while (w > 16 && !fitsAll(xL, ryT, ryB, w)) w -= 1
+
+    const dstr = capsulePath(yT - yc, yB - yc, xL, xL + w)
+    if (row._d !== dstr) { row.path.setAttribute('d', dstr); row._d = dstr }
+    if (row._f !== c.color) { row.path.setAttribute('fill', c.color); row._f = c.color }
+    const st = Math.round(a) === 0 ? 'rgba(255,255,255,.34)' : 'none'
+    if (row._s !== st) {
+      row.path.setAttribute('stroke', st)
+      row.path.setAttribute('stroke-width', st === 'none' ? '0' : '1.5')
+      row._s = st
+    }
+    /* 选中条荧光 glow（中心附近 a<0.55） */
+    const glow = a < 0.55 ? 'drop-shadow(0 0 6px ' + c.color + ')' : ''
+    if (row._g !== glow) { row.path.style.filter = glow; row._g = glow }
+
+    /* 点击：按分类差滚到焦点 */
+    row.path.onclick = () => {
+      let ring = (row.K % N) - sel
+      if (ring > N / 2) ring -= N
+      if (ring < -N / 2) ring += N
+      goTo(Math.round(pos) + ring)
+      touchConfirm()
+    }
+
+    /* 文字：淡出（t1 全透明、t2 0.78×），a≥1.5 隐藏 */
+    if (a < 1.5) {
+      row.t1.style.display = ''; row.t2.style.display = ''
+      const txtOp = Math.round((1 - fadeT) * 20) / 20
+      if (row._to !== txtOp) {
+        row.t1.setAttribute('opacity', String(txtOp))
+        row.t2.setAttribute('opacity', String(Math.round(0.78 * txtOp * 20) / 20))
+        row._to = txtOp
+      }
+      const nmK = Math.round(p.nm * 2) / 2, duK = Math.round(p.du * 2) / 2
+      if (row._nm !== nmK) { row.t1.setAttribute('font-size', nmK); row._nm = nmK }
+      if (row._du !== duK) { row.t2.setAttribute('font-size', duK); row._du = duK }
+      if (row._nx !== xL.toFixed(1)) {
+        row.t1.setAttribute('x', (xL + 6).toFixed(2)); row.t1.setAttribute('y', '0')
+        row.t1.setAttribute('font-weight', '600')
+        row.t1.setAttribute('fill', inkFor(c.color)); row.t1.textContent = c.name
+        row.t2.setAttribute('x', (xL + w - 6).toFixed(2)); row.t2.setAttribute('y', '0')
+        row.t2.setAttribute('font-weight', '500')
+        row.t2.setAttribute('fill', inkFor(c.color)); row.t2.textContent = c.dur
+        row._nx = xL.toFixed(1)
+      }
+    } else {
+      row.t1.style.display = 'none'; row.t2.style.display = 'none'
+    }
+  }
+  /* 核心区：实时显示焦点名称 */
+  const cur = CATS[sel]
+  const who = document.getElementById('who')
+  if (who.textContent !== cur.name) who.textContent = cur.name
+}
+
+/* ═══ 输入 ═══ */
+window.addEventListener('wheel', (e) => {
+  e.preventDefault()
+  const now = Date.now()
+  const dpx = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY
+  if (Math.abs(dpx) < 0.5) return
+  stopAnim()
+  pos += dpx / 100
+  paint()
+  vel = Math.max(-MAX_VEL, Math.min(MAX_VEL, vel * 0.7 + (dpx / 100) * 0.28))
+  lastWheel = now
+  startInertia()
+  touchConfirm()
+}, { passive: false })
+
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+  stopInertia()
+  goTo(Math.round(pos) + (e.key === 'ArrowDown' ? 1 : -1))
+  touchConfirm()
+})
+
+paint()
+</script>
+</body>
+</html>

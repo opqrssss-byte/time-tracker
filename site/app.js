@@ -807,24 +807,125 @@ function applyRingStateClasses() {
   updatePickOverlay()    // 浮层挂在同一条状态通路上，不新增第二条状态源
 }
 /* ============================================================================
-   桌面组件 · 切换态浮层
+   桌面组件 · 切换态弧排（v16.7 样品移植，用户已验收）
    ----------------------------------------------------------------------------
-   用户明确："桌面常驻还要这个表盘形式，只是在切换，也就是鼠标滚轮在上面滚动的时候
-   弹出荧光条，背景用模糊效果遮住表盘，同时几个荧光条滚动，最下方是新增项目，
-   可以循环滚动，停留并移开鼠标就会开始对应项目的计时。"
+   交互通路与原悬浮列表完全一致（onWheel → stepFocus → setFocus →
+   停顿 FOCUS_CONFIRM_MS → finishConfirm），这里只负责"把选中状态画成表盘内的弧排"：
+   状态源仍是 focusCatId + pickIds，弧排是它的一个视图，不新增第二条状态源。
 
-   → **常驻形态是表盘，不动**；本浮层只在 focusCatId 有值时出现，盖在表盘上（模糊遮罩在 CSS）。
-     滚动 / 选中 / 确认仍走原有那条通路
-     （onWheel → stepFocus → setFocus → 停顿 FOCUS_CONFIRM_MS → finishConfirm），
-     这里只负责"把选中状态画成荧光条列表"，不新增第二条状态源。
-
-   循环滚动：每行相对选中行的位移用**环形最短距离**算，滚到末位自然绕回开头
-   （而不是跳回），且无论多少分类都只露出附近 5 行。
+   ★ 几何（v16.5 定稿）："左边界弯 + 右边界也弯 + 横向装文字"在 152 的盘上不可兼得，
+     能看见的形变只能来自**位置 + 尺寸的连续变化**。ROW_H=24 + 条高 ≤24 →
+     最外圈（中心 ±60）+ 半高 8 = 68 ≤ LIMIT=72 → 任意滚动位四角都在圆内，
+     弹出 / 裁切在数学上消失。
+   ★ 运动（v16.7 定稿，抄 ncdai/react-wheel-picker）：
+     ① 整条带子只用一个 transform / 一个浮点 pickPos —— 结构上不可能重叠
+     ② rAF 手动插值，不用 CSS transition（SVG 上不走合成层，快滚会被反复重启）
+     ③ 无限循环 = 多拷贝 + 取模（两端有拷贝，跳过后画面一模一样 → 看不见）
+     ④ 任何输入只更新 pickGoal，LERP 阻尼追赶 → 滑动过渡，不再事件瞬移
+   ★ 铁律：位置只能由 pickPos 一个浮点数派生。
+     任何"某条自己算自己的位置"都会重新引入重叠（v11–13 的教训）。
    ========================================================================== */
-const PICK_ROW_H = 52      // 条高 46 + 间隙 6；配合"方形遮罩"把条做大做直观
 
-const pickName = (id) => (id === '__none__' ? '未分类' : id === '__other__' ? '其他分类'
-  : id === '__add__' ? '新增项目' : ((catById(id) || {}).name || ''))
+/* ═══ ARC-PICK:PURE-BEGIN ═══
+   纯几何 / 插值（零 DOM 依赖）—— site/_verify/verify_arc_pick.py 抽取本段跑穷举。
+   改这段几何后必须跑：python site\_verify\verify_arc_pick.py
+   ═══ ═══ */
+const ARC_LIMIT = 72        // 弧半径 76 − 安全边 4：条的左边界就是半径 72 的弦
+const ARC_ROW_H = 24        // 行距（刚性体）：相邻行有符号间距恒为 24 → 永不重叠
+const ARC_VISIBLE = 2       // 焦点上下各露 2 条（一屏 5 条）
+
+/* 等级插值表（v16.6 定稿）：外观随 a=|物理偏移| 连续渐变，不再三档跳变。
+   第 4 行是"消失端"（a≥2.5 已不可见，仅作插值终点）。
+   h：条高；nm/du：名称/时长字号；op：透明度；blur：模糊半径 */
+const ARC_LV = [
+  { h: 24, nm: 13,   du: 11,   op: 1.00, blur: 0.0 },   // a=0 中心（最大/清晰）
+  { h: 20, nm: 11,   du: 9,    op: 0.94, blur: 0.0 },   // a=1 上下各一
+  { h: 16, nm: 10,   du: 8.5,  op: 0.60, blur: 1.6 },   // a=2 更外（模糊）
+  { h: 14, nm: 9,    du: 8,    op: 0.30, blur: 2.6 },   // a=3 消失端
+]
+function arcParamsAt(a) {
+  const i = Math.min(2, Math.floor(a))
+  const t = a - i
+  const A = ARC_LV[i], B = ARC_LV[i + 1]
+  return {
+    h: A.h + (B.h - A.h) * t,
+    nm: A.nm + (B.nm - A.nm) * t,
+    du: A.du + (B.du - A.du) * t,
+    op: A.op + (B.op - A.op) * t,
+    blur: A.blur + (B.blur - A.blur) * t,
+  }
+}
+/* 四角都在圆内（浮点容差 1e-6：贴弦时左角平方和恰 = LIMIT²） */
+function arcFitsAll(x, yT, yB, w) {
+  const T = ARC_LIMIT * ARC_LIMIT + 1e-6
+  return (x * x + yT * yT <= T) && ((x + w) * (x + w) + yT * yT <= T) &&
+         (x * x + yB * yB <= T) && ((x + w) * (x + w) + yB * yB <= T)
+}
+/* 条的形状：普通胶囊（两端圆头，用户认可的 v5 形态） */
+function arcCapsulePath(yT, yB, xL, xR) {
+  const r = Math.min((yB - yT) / 2, (xR - xL) / 2)
+  return [
+    `M ${(xL + r).toFixed(2)} ${yT.toFixed(2)}`,
+    `L ${(xR - r).toFixed(2)} ${yT.toFixed(2)}`,
+    `A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(xR - r).toFixed(2)} ${yB.toFixed(2)}`,
+    `L ${(xL + r).toFixed(2)} ${yB.toFixed(2)}`,
+    `A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(xL + r).toFixed(2)} ${yT.toFixed(2)}`,
+    'Z',
+  ].join(' ')
+}
+/* 文字宽度紧凑估算。⚠️ 必须保守（宁多勿少）：估算偏小会让文字溢出荧光条，
+   而"文字不许超出条"是用户的硬要求。CJK/全角按 1em、其余按 0.6em，+3px 余量。 */
+function arcTextW(str, fs) {
+  const s = String(str == null ? '' : str)
+  if (!s) return 0
+  let w = 3
+  for (const ch of s) w += (/[\u2E80-\u9FFF\uFF00-\uFFEF\u3000-\u303F\u2018-\u201D\u2014\u2026]/.test(ch) ? 1 : 0.6) * fs
+  return w
+}
+/* 把文字截到预算内（先减字、补省略号；连省略号都放不下时只留省略号） */
+function arcFitText(str, fs, budget) {
+  const s = String(str == null ? '' : str)
+  if (arcTextW(s, fs) <= budget) return s
+  for (let i = s.length - 1; i >= 1; i--) {
+    const t = s.slice(0, i) + '…'
+    if (arcTextW(t, fs) <= budget) return t
+  }
+  return '…'
+}
+/* 一行的全部几何 / 外观（纯函数：物理偏移 dRaw + 该项数据 → 一切）。
+   item = { id, name, durText }：durText 由调用方预格式化（保持本块零外部依赖）。
+   左端贴弦：xL = -sqrt(LIMIT² − yOuter²)；条宽由文字驱动（v16.7：不撑满圆弦，
+   v16.8 的弦宽占满已被用户否决），文字过长按几何预算截断；
+   while 递减只是几何兜底（截断后理应永不触发）。 */
+function arcRowSolve(dRaw, item) {
+  const a = Math.abs(dRaw)
+  const p = arcParamsAt(a)
+  const realY = dRaw * ARC_ROW_H
+  const ryT = realY - p.h / 2, ryB = realY + p.h / 2
+  const yOuter = Math.max(Math.abs(ryT), Math.abs(ryB))
+  const half = Math.sqrt(Math.max(0, ARC_LIMIT * ARC_LIMIT - yOuter * yOuter))
+  const xL = -half
+  const wMax = 2 * half                       // 几何上限（四角口径）
+  const isAdd = item.id === '__add__'
+  const PAD = 14                              // 名称↔时长间隔 + 两端内衬
+  let du = isAdd ? '' : (item.durText || '')
+  let nm = isAdd ? '+ ' + (item.name || '') : (item.name || '')
+  let wD = arcTextW(du, p.du)
+  if (wD > (wMax - PAD) * 0.5) {              // 时长至多占一半预算，再长就截
+    du = arcFitText(du, p.du, Math.floor((wMax - PAD) * 0.5))
+    wD = arcTextW(du, p.du)
+  }
+  nm = arcFitText(nm, p.nm, Math.max(p.nm, wMax - PAD - wD))
+  const wN = arcTextW(nm, p.nm)
+  const wText = wN + wD + PAD
+  const fadeT = Math.max(0, Math.min(1, (a - 0.9) / 0.6))    // 0.9 起淡出 → 1.5 全隐
+  const shrinkT = Math.max(0, Math.min(1, (a - 1.5) / 0.3))  // 1.5 起收窄 → 1.8 到 26
+  const wantW = a < 1.5 ? wText : wText + (26 - wText) * shrinkT
+  let w = wantW
+  while (w > 16 && !arcFitsAll(xL, ryT, ryB, w)) w -= 1
+  return { a, p, yT: ryT, yB: ryB, xL, w, wText, wName: wN, wDur: wD, nm, du, fadeT, visible: a <= ARC_VISIBLE + 0.5 }
+}
+/* ═══ ARC-PICK:PURE-END ═══ */
 
 /* 条内文字色：亮底用深字、暗底用白字。阈值 .62 —— 再低会把中蓝/中绿也判成深字，整排就乱 */
 function inkForBar(hex) {
@@ -834,96 +935,209 @@ function inkForBar(hex) {
   return L > 0.62 ? 'rgba(12,14,18,.9)' : 'rgba(255,255,255,.97)'
 }
 
-let pickRows = []
-let pickIds = []
+/* ── 弧排状态（运动层）── */
+let pickIds = []             // 浮层列表的 id 序列（= pickList() 的 id 列）
+let pickPos = 0              // ★ 唯一的带子位置状态（浮点格数）
+let pickGoal = 0             // 目标位置：输入事件只改它
+let pickRaf = 0
+let pickLastTs = 0
+let pickOpen = false         // 浮层开着吗（重开时直接落位，不从别处滑入）
+let arcStrip = null          // 整条带子（唯一被 transform 的元素）
+let arcRows = []             // [{ g, path, t1, t2, K, id, _* 记忆化字段 }]
+let arcProgRect = null       // 确认进度线（选中条底部，strip 坐标）
 
+const ARC_LERP = 0.22        // 阻尼追赶系数/帧（60fps：1 格约 0.3s 滑到位）
+
+/* 浮层显隐 + 弧排数据/目标更新（挂在 applyRingStateClasses 同一条状态通路上） */
 function updatePickOverlay() {
   const layer = $('widget-pick')
-  const box = $('widget-pick-list')
-  if (!layer || !box) return
+  if (!layer) return
   const on = !!focusCatId
   layer.classList.toggle('hidden', !on)
-  if (!on) return
-
+  if (!on) {
+    stopPickLoop()
+    pickOpen = false
+    return
+  }
   pickData = pickList()                       // 完整列表（含新增项），不受环的截断影响
   const ids = pickData.map((x) => x.id)
-
-  if (ids.join(',') !== pickIds.join(',')) {
-    box.innerHTML = ''
-    pickRows = []
+  if (ids.join(',') !== pickIds.join(',')) {  // 列表形状变了才重建 DOM
     pickIds = ids
-    ids.forEach((id) => {
-      const el = document.createElement('div')
-      el.className = 'wp-row'
-      /* 「新增项目」那行**没有时长**（.wp-du），但有确认进度线（.wp-prog）——
-         滚到它、停留 900ms 同样会走进度、同样能确认。 */
-      el.innerHTML = id === '__add__'
-        ? '<div class="wp-bar wp-add"><span class="wp-plus"></span><span class="wp-nm"></span><span class="wp-prog"></span></div>'
-        : '<div class="wp-bar"><span class="wp-nm"></span><span class="wp-du"></span><span class="wp-prog"></span></div>'
-      box.appendChild(el)
-      const bar = el.querySelector('.wp-bar')
-      pickRows.push({
-        el, bar, id, prog: bar.querySelector('.wp-prog'),
-        nm: bar.querySelector('.wp-nm'), du: bar.querySelector('.wp-du'),
-      })
-    })
+    buildArcStrip()
   }
-
-  const n = pickIds.length
-  let fi = pickIds.indexOf(focusCatId)
-  if (fi < 0) fi = 0
-  const maxW = Math.max(110, box.clientWidth - 20)
-
-  /* 先写文字、量**文字**宽。不要量条本身：条宽是我们自己上一轮写进去的，
-     再量它会把零点顶到满格、所有条被拉平成一样长（第一版就是这么错的）。 */
-  /* ⚠️ 量宽必须包 try：它只是"锦上添花"，一旦抛异常会把后面的**定位**带崩，
-     结果是所有条叠在中心、看着只剩一条（用户截图就是这个现象）。
-     位置是命脉，宽度是装饰，两者不能串在一起。 */
-  let L0 = 80
-  /* maxSec 放在 try 外面：它只依赖 ringData，不会抛；而它一旦留在兜底值 1，
-     所有非零的条都会算成 share=1 → 全变成满宽，条长就彻底失去意义了 */
-  const maxSec = Math.max(1, ...pickData.map((x) => x.sec || 0))
-  try {
-    pickRows.forEach((r) => {
-      const it = pickData.find((x) => x.id === r.id) || {}
-      r.nm.textContent = pickName(r.id)
-      if (r.du) r.du.textContent = (it.sec || 0) > 0 ? fmtDurMin(it.sec) : '—'
-      /* ⚠️ 必须判空：`__add__` 那行没有 .wp-du，「新增项目」又占一个 ＋ 图标宽。
-       不判空这里会抛 TypeError —— 之前"浮层只剩一条"的根因就是它。 */
-    L0 = Math.max(L0, r.nm.scrollWidth + (r.du ? r.du.scrollWidth : 0) + (r.id === '__add__' ? 16 : 0) + 10 + 32 + 2)
-    })
-    L0 = Math.min(L0, maxW)
-  } catch (err) {
-    L0 = Math.max(80, Math.min(L0, maxW))         // 量失败就退回保守值，继续往下走
+  const gi = pickIds.indexOf(focusCatId)
+  pickGoal = (gi < 0 ? 0 : gi) - ARC_VISIBLE
+  if (!pickOpen) {                            // 浮层刚开：直接落位，不从别处滑入
+    pickPos = pickGoal
+    pickOpen = true
   }
-  pickRows.forEach((r, i) => {
-    let d = i - fi                       // 环形最短距离 → 到末位自然绕回开头
-    if (d > n / 2) d -= n
-    if (d < -n / 2) d += n
-    r.el.style.transform = 'translateY(' + (d * PICK_ROW_H) + 'px)'   // 居中由 CSS 的 margin-top 负责
-    const a = Math.abs(d)
-    r.el.style.opacity = a < 0.5 ? 1 : a < 1.5 ? 0.55 : a < 2.5 ? 0.22 : 0
-    r.el.style.visibility = a > 2.5 ? 'hidden' : 'visible'
-    r.el.classList.toggle('cur', d === 0)
-
-    const it = pickData.find((x) => x.id === r.id) || {}
-    /* 「新增项目」不吃时长映射，固定用最短档（它本来就没有时长） */
-    if (r.id === '__add__') { r.bar.style.width = L0 + 'px'; return }
-    const ghost = !!it.ghost && !it.active
-    const share = Math.min(1, (it.sec || 0) / maxSec)
-    r.bar.style.width = Math.round(Math.min(maxW, L0 + (maxW - L0) * share)) + 'px'
-    r.bar.style.background = ghost ? 'rgba(255,255,255,.10)' : (it.color || '#5a5d64')
-    r.bar.style.color = ghost ? 'rgba(255,255,255,.58)' : inkForBar(it.color)
-  })
+  ensurePickLoop()
+  paintArc()
 }
 
-/* 确认进度线：原来画在环上的 ring-confirm 弧，浮层盖住后改画在选中条底部 */
+/* 建带子：N 项 × 多拷贝。拷贝数保证可见窗（5~6 行）在任意 frac 下都有行可用。 */
+function buildArcStrip() {
+  const svg = $('widget-arc')
+  if (!svg) { arcStrip = null; arcRows = []; return }   // 没有容器就别留旧行（会与新 pickIds 错位）
+  const NS = 'http://www.w3.org/2000/svg'
+  svg.innerHTML = ''
+  const n = pickIds.length
+  const copies = Math.max(2, Math.ceil((n + ARC_VISIBLE * 2 + 2) / n))
+  arcStrip = document.createElementNS(NS, 'g')
+  arcStrip.style.willChange = 'transform'
+  svg.appendChild(arcStrip)
+  arcRows = []
+  for (let k = 0; k < n * copies; k++) {
+    const g = document.createElementNS(NS, 'g')
+    g.setAttribute('transform', 'translate(0,' + ((k - ARC_VISIBLE) * ARC_ROW_H) + ')')
+    const path = document.createElementNS(NS, 'path')
+    const t1 = document.createElementNS(NS, 'text')
+    const t2 = document.createElementNS(NS, 'text')
+    t1.setAttribute('dominant-baseline', 'central')
+    t2.setAttribute('dominant-baseline', 'central')
+    t2.setAttribute('text-anchor', 'end')
+    g.appendChild(path); g.appendChild(t1); g.appendChild(t2)
+    arcStrip.appendChild(g)
+    const row = { g, path, t1, t2, K: k, id: pickIds[k % n] }
+    path.addEventListener('click', () => onArcRowClick(row.id))
+    arcRows.push(row)
+  }
+  arcProgRect = document.createElementNS(NS, 'rect')
+  arcProgRect.setAttribute('height', '2.5')
+  arcProgRect.setAttribute('rx', '1.5')
+  arcProgRect.setAttribute('fill', 'rgba(255,255,255,.92)')
+  arcProgRect.style.display = 'none'
+  arcStrip.appendChild(arcProgRect)
+}
+
+/* 渲染：位置只由 pickPos 派生；属性写入全部"变了才写"（防反复栅格化卡顿） */
+function paintArc() {
+  if (!arcStrip) return
+  const n = pickIds.length
+  if (!n) return
+  const frac = ((pickPos % n) + n) % n
+  arcStrip.style.transform = 'translate(0,' + (-frac * ARC_ROW_H).toFixed(2) + 'px)'
+  const selIdx = focusCatId ? pickIds.indexOf(focusCatId) : -1
+  const prog = selIdx >= 0 ? confirmProgress : 0
+  let drewProg = false
+  for (let r = 0; r < arcRows.length; r++) {
+    const row = arcRows[r]
+    const dRaw = (row.K - ARC_VISIBLE) - frac
+    if (Math.abs(dRaw) > ARC_VISIBLE + 0.5) {           // 窗外：整行藏（刚性体 → 结构上不重叠）
+      if (row._vis !== false) { row.g.style.display = 'none'; row._vis = false }
+      continue
+    }
+    const it = pickData[row.K % n] || {}
+    const s = arcRowSolve(dRaw, {
+      id: row.id, name: it.name,
+      durText: row.id === '__add__' ? '' : fmtMS(it.sec || 0),
+    })
+    if (row._vis !== true) { row.g.style.display = ''; row._vis = true }
+    const c = it.color
+    const isAdd = row.id === '__add__'
+
+    /* 记忆化（量化阈值）：blur 0.25px 步、op 0.05 步、字号 0.5 步 */
+    const bv = s.p.blur > 0.08 ? 'blur(' + (Math.round(s.p.blur * 4) / 4) + 'px)' : ''
+    if (row._b !== bv) { row.g.setAttribute('filter', bv); row._b = bv }
+    const op = Math.round(s.p.op * 20) / 20
+    if (row._o !== op) { row.g.setAttribute('opacity', String(op)); row._o = op }
+
+    const fill = isAdd ? 'rgba(255,255,255,.10)' : (c || '#5a5d64')
+    if (row._f !== fill) { row.path.setAttribute('fill', fill); row._f = fill }
+    const dstr = arcCapsulePath(-s.p.h / 2, s.p.h / 2, s.xL, s.xL + s.w)
+    if (row._d !== dstr) { row.path.setAttribute('d', dstr); row._d = dstr }
+    const st = s.a < 0.5 ? 'rgba(255,255,255,.34)' : 'none'
+    if (row._s !== st) {
+      row.path.setAttribute('stroke', st)
+      row.path.setAttribute('stroke-width', st === 'none' ? '0' : '1.5')
+      row._s = st
+    }
+    /* 选中条荧光 glow（中心附近 a<0.55） */
+    const glowCol = isAdd ? 'rgba(255,255,255,.20)' : (c || '#ffffff')
+    const glow = s.a < 0.55 ? 'drop-shadow(0 0 6px ' + glowCol + ')' : ''
+    if (row._g !== glow) { row.path.style.filter = glow; row._g = glow }
+
+    /* 文字：a<1.5 显示（0.9 起淡出），≥1.5 隐藏；「新增项目」只有名称 */
+    if (s.a < 1.5) {
+      row.t1.style.display = ''
+      row.t2.style.display = isAdd ? 'none' : ''
+      const txtOp = Math.round((1 - s.fadeT) * 20) / 20
+      if (row._to !== txtOp) {
+        row.t1.setAttribute('opacity', String(txtOp))
+        row.t2.setAttribute('opacity', String(Math.round(0.78 * txtOp * 20) / 20))
+        row._to = txtOp
+      }
+      const nmK = Math.round(s.p.nm * 2) / 2, duK = Math.round(s.p.du * 2) / 2
+      if (row._nm !== nmK) { row.t1.setAttribute('font-size', nmK); row._nm = nmK }
+      if (row._du !== duK) { row.t2.setAttribute('font-size', duK); row._du = duK }
+      const ink = isAdd ? 'rgba(255,255,255,.72)' : inkForBar(c)
+      if (row._nx !== s.xL.toFixed(1) || row._n1 !== s.nm || row._n2 !== s.du || row._ik !== ink) {
+        row.t1.setAttribute('x', (s.xL + 6).toFixed(2)); row.t1.setAttribute('y', '0')
+        row.t1.setAttribute('font-weight', '600')
+        row.t1.setAttribute('fill', ink); row.t1.textContent = s.nm
+        row.t2.setAttribute('x', (s.xL + s.w - 6).toFixed(2)); row.t2.setAttribute('y', '0')
+        row.t2.setAttribute('font-weight', '500')
+        row.t2.setAttribute('fill', ink); row.t2.textContent = s.du
+        row._nx = s.xL.toFixed(1); row._n1 = s.nm; row._n2 = s.du; row._ik = ink
+      }
+    } else {
+      row.t1.style.display = 'none'; row.t2.style.display = 'none'
+    }
+    /* 确认进度线：只画在焦点行底部（strip 坐标 = baseY + 条内偏移） */
+    if (arcProgRect && row.K % n === selIdx && prog > 0 && s.a < 0.5) {
+      const w = Math.max(0, (s.w - 12) * prog)
+      drewProg = true
+      arcProgRect.style.display = w > 0.5 ? '' : 'none'
+      const x = (s.xL + 6).toFixed(2)
+      const y = ((row.K - ARC_VISIBLE) * ARC_ROW_H + s.p.h / 2 - 5.5).toFixed(2)
+      const ww = w.toFixed(2)
+      if (arcProgRect._x !== x) { arcProgRect.setAttribute('x', x); arcProgRect._x = x }
+      if (arcProgRect._y !== y) { arcProgRect.setAttribute('y', y); arcProgRect._y = y }
+      if (arcProgRect._w !== ww) { arcProgRect.setAttribute('width', ww); arcProgRect._w = ww }
+    }
+  }
+  if (arcProgRect && !drewProg) arcProgRect.style.display = 'none'
+}
+
+/* 运动层（v16.7）：rAF 阻尼追赶。输入只改 pickGoal；位置永远只有一个来源。
+   帧率归一化（高刷屏不会滑得更快）；prefers-reduced-motion → 直接落位不滑。 */
+function arcReducedMotion() {
+  return typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+function ensurePickLoop() {
+  if (arcReducedMotion()) { pickPos = pickGoal; paintArc(); return }
+  if (!pickRaf) { pickLastTs = performance.now(); pickRaf = requestAnimationFrame(pickLoop) }
+}
+function stopPickLoop() {
+  if (pickRaf) { cancelAnimationFrame(pickRaf); pickRaf = 0 }
+}
+function pickLoop(ts) {
+  pickRaf = 0
+  const dt = Math.min(50, Math.max(1, ts - pickLastTs))    // 掉帧保护：单帧最多按 50ms 折算
+  pickLastTs = ts
+  const f = 1 - Math.pow(1 - ARC_LERP, dt / 16.7)
+  const diff = pickGoal - pickPos
+  if (Math.abs(diff) < 0.005) { pickPos = pickGoal; paintArc(); return }
+  pickPos += diff * f
+  paintArc()
+  pickRaf = requestAnimationFrame(pickLoop)
+}
+
+/* 确认进度线：改画在弧排选中条底部（环上的确认弧被浮层盖住了，见 paintConfirmArc） */
 function paintPickProgress() {
-  pickRows.forEach((r) => {
-    if (!r.prog) return
-    const cur = r.el.classList.contains('cur') && !!focusCatId
-    r.prog.style.width = cur ? Math.round(confirmProgress * 100) + '%' : '0%'
-  })
+  if (focusCatId) paintArc()
+}
+
+/* 点弧排上的条 = 立即确认（与旧浮层列表点击同义）。
+   「新增项目」走新增面板 —— 它没有分类，不能当真分类开始计时。 */
+function onArcRowClick(id) {
+  cancelConfirm()
+  clearFocus()
+  if (id === '__add__') { openWidgetAddPanel(); return }
+  if (id === '__other__') { openOthersPanel(); return }
+  clearHover()
+  onSectorClick(id)
 }
 
 function renderRing() {
@@ -1324,33 +1538,9 @@ $('widget-ring').addEventListener('mouseover', (e) => {
 })
 /* 鼠标离开只复原悬停，不取消滚轮选中（选中的倒计时与鼠标位置无关，由用户确认）。
    不依赖 mouseout 的 relatedTarget 判断，那样在元素被重绘替换时会漏事件（曾导致悬停永久卡死） */
-/* 浮层里的条也要能点（点 = 立即确认，与扇区点击同一条路径）。
+/* 弧排上的条自带 click（buildArcStrip 里按 id 绑定 → onArcRowClick），不在这里统一委托。
    ⚠️ 滚轮**不在这里拦**：它必须冒泡到 window 上的 onWheel 去驱动 stepFocus，
    否则滚轮就没法滚列表了。 */
-const pickEl = $('widget-pick-list')
-if (pickEl) {
-  pickEl.addEventListener('click', (e) => {
-    const row = e.target.closest('.wp-row')
-    if (!row) return
-    const idx = [...pickEl.children].indexOf(row)
-    const id = pickIds[idx]
-    if (!id) return
-    cancelConfirm()
-    clearFocus()
-    if (id === '__other__') { openOthersPanel(); return }
-    clearHover()
-    onSectorClick(id)
-  })
-}
-/* 底部「新增项目」：独立一格，**只走点击**，不参与滚轮与停留 */
-const pickAddEl = $('widget-pick-add')
-if (pickAddEl) {
-  pickAddEl.addEventListener('click', () => {
-    cancelConfirm()
-    clearFocus()
-    openWidgetAddPanel()
-  })
-}
 $('widget-ring-wrap').addEventListener('mouseleave', clearHover)
 $('widget-plate').addEventListener('mouseleave', clearHover)
 window.addEventListener('blur', () => { clearFocus(); clearHover() })

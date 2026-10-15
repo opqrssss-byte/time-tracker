@@ -8,3 +8,6 @@ dist/
 .review/
 *.log
 cognitive-qa.zip
+
+# 验证脚本的临时产物（每次跑重新生成，勿入库）
+site/_verify/tmp_*.js

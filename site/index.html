@@ -28,14 +28,13 @@
       </div>
     </div>
 
-    <!-- 切换态浮层：滚轮一滚才出现 —— 荧光条盖住表盘、背景模糊、循环滚动、末位「新增项目」。
-         停留 FOCUS_CONFIRM_MS 自动确认（或点击）；鼠标移开不清选中（选中与鼠标位置无关）。 -->
-    <!-- 滚轮切换浮层。分类 + 末位「新增项目」都在这个列表里，同一套交互：
-         滚到 → 停留 900ms → 确认（分类=切换 / 新增=弹出新增窗口）。
-         曾经把「新增」拆成底部独立一格（想做"差异性"），实测既点不动、
-         也和产品形态不符 —— 已折回列表内。 -->
+    <!-- 切换态浮层：滚轮一滚才出现 —— 弧排盖在表盘上、背景用模糊遮住、循环滚动。
+         停留 FOCUS_CONFIRM_MS 自动确认（或点条立即确认）；鼠标移开不清选中（选中与鼠标位置无关）。
+         弧排 = lab-arc.html v16.7（用户已验收）移植进正式组件，几何/运动见 app.js 弧排章节；
+         #widget-pick-list 是旧悬浮列表的预留容器（当前不用，留作回退）。 -->
     <div id="widget-pick" class="hidden">
       <div id="widget-pick-list"></div>
+      <svg id="widget-arc" viewBox="-76 -76 152 152" aria-hidden="true"></svg>
     </div>
 
     <button id="widget-add-cat" type="button" title="新增分类">+</button>

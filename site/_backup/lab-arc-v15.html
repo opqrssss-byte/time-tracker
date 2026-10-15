@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>弧排样品 v8</title>
+<style>
+  /* 独立样品页 · v8（用户圈红图定位的问题）
+     问题：条按**弦**（直线）定位 → 与圆边（弧）之间留出**新月形空隙**（用户圈红的地方）
+     修法：把条画成 **左边界就是圆盘那段弧** 的形状 → 空隙被填满
+     文字**保持水平**（不跟着转）—— 放在形状是直的那一侧
+     其余照旧：5 条聚焦窗、选中最大两端递减、两端模糊、整条完整不裁切 */
+  html,body{margin:0;height:100%;background:#0a0b0d;
+    font-family:"SF Pro Display",-apple-system,"Segoe UI",system-ui,sans-serif;
+    display:flex;align-items:center;justify-content:center;}
+  #stage{position:relative;width:260px;height:380px;display:flex;align-items:center;justify-content:center;}
+
+  #dial{position:relative;width:152px;height:152px;border-radius:50%;
+    /* 形状本来就卡在圆内（fitsAll 保证），这里只裁掉**模糊向外晕出**的那一点 */
+    overflow:hidden;
+    background:radial-gradient(circle at 50% 42%,rgba(255,255,255,.07),rgba(255,255,255,.015) 62%),
+      rgba(18,19,22,.92);
+    border:1px solid rgba(255,255,255,.10);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+  /* 图形层：坐标原点挪到圆心，SVG 尺寸 = 盘直径（viewBox -76..76） */
+  #shapes{position:absolute;left:0;top:0;width:152px;height:152px;}
+  .bar{transition:opacity 220ms ease;}
+
+  #core{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    text-align:center;pointer-events:none;opacity:.9;}
+  #who{font-size:9.5px;color:rgba(255,255,255,.5);}
+
+  #hint{position:absolute;bottom:10px;width:100%;text-align:center;
+    font-size:11px;color:rgba(255,255,255,.30);}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="dial">
+    <svg id="shapes" viewBox="-76 -76 152 152" aria-hidden="true"></svg>
+    <div id="core"><div id="who">空闲</div></div>
+  </div>
+  <div id="hint">滚轮 / 上下键 转动 · 点一下直接选中</div>
+</div>
+<script>
+const CATS = [
+  { name: '工作', color: '#4F8CFF', dur: '2:15' },
+  { name: '学习', color: '#9B6DFF', dur: '45m' },
+  { name: '运动', color: '#2FBF71', dur: '20m' },
+  { name: '生活', color: '#F2A93B', dur: '1:05' },
+  { name: '阅读', color: '#23B8D5', dur: '35m' },
+  { name: '写作', color: '#F06EAA', dur: '10m' },
+  { name: '摸鱼', color: '#8a91a3', dur: '5m' },
+]
+
+const R = 76, SAFE = 4, LIMIT = R - SAFE   // 弧半径：条的左边界就是这条弧
+const ROW_H = 28
+const VISIBLE = 2
+
+/* 三级递减 */
+const LV = [
+  { h: 30, nm: 12.5, du: 10.5, pad: 20, blur: 0,   op: 1,    named: true  },
+  { h: 24, nm: 11,   du: 9,    pad: 16, blur: 0,   op: 0.94, named: true  },
+  { h: 18, nm: 10,   du: 8.5,  pad: 12, blur: 1.2, op: 0.66, named: false },
+]
+
+let sel = 0
+/* ★ offset 是**不取模**的连续位置：滚动时它单调地加减，
+   于是每个分类的 d = i - offset 也**连续变化** —— 条只会朝一个方向走，
+   一条"从一边进来、另一边出去"，绝不会横穿整个盘（用户报的"堆到一起"就是这个）。
+   旧的写法是 d = i - sel 再取模，快速滚动时条会被重新分到对面 → 只能穿过中心滑过去。 */
+let offset = 0
+const svg = document.getElementById('shapes')
+
+function inkFor(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''))
+  if (!m) return '#fff'
+  const L = (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)) / 255
+  return L > 0.62 ? 'rgba(12,14,18,.92)' : 'rgba(255,255,255,.97)'
+}
+/* 圆上横坐标：x = -√(LIMIT² - y²)，y 越靠外 |x| 越小 */
+const xAt = (y) => -Math.sqrt(Math.max(0.01, LIMIT * LIMIT - y * y))
+
+/* 条的形状：**普通胶囊**（两端圆头）—— 回到用户认可的 v5 形态。
+   "左边贴弧、随滚动形变"已放弃：152px 下"两边都弯 + 横向装下文字"数学上不成立
+   （内弧半径会小到 8px，等于直线）。详见 docs/弧排交互-问题简报.md
+   位置：左端按**这一行最靠外的那条边**取弦位（不能按中心 y，否则上下角出圆、宽度被迫砍没） */
+function capsulePath(yT, yB, xL, xR) {
+  const r = Math.min((yB - yT) / 2, (xR - xL) / 2)
+  return [
+    `M ${(xL + r).toFixed(2)} ${yT.toFixed(2)}`,
+    `L ${(xR - r).toFixed(2)} ${yT.toFixed(2)}`,
+    `A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(xR - r).toFixed(2)} ${yB.toFixed(2)}`,
+    `L ${(xL + r).toFixed(2)} ${yB.toFixed(2)}`,
+    `A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(xL + r).toFixed(2)} ${yT.toFixed(2)}`,
+    'Z',
+  ].join(' ')
+}
+/* 四个角都在圆内才允许（整条完整可见，不做裁切） */
+function fitsAll(x, yT, yB, w) {
+  const pts = [[x, yT], [x + w, yT], [x, yB], [x + w, yB]]
+  return pts.every((p) => p[0] * p[0] + p[1] * p[1] <= LIMIT * LIMIT)
+}
+
+/* 常驻 5 个 <g>，**不再每次清空重建** —— 清空会把元素连同过渡一起扔掉
+   （用户报"动效怎么不见了"就是这个原因）。
+     位置：靠 transform 过渡 → 平滑滑动
+     形状：左右边界的 d 每次重算 → **形状本身随滚动连续变化**（这才是"形变"） */
+/* ══════════════════════════════════════════════════════════════════
+   渲染层：**整条带子刚性平移**（对齐桌面组件那份丝滑列表的做法）
+   ------------------------------------------------------------------
+   之前是"每条各自算位置、各自播过渡"——快速滚动时它们在途中互相穿过，
+   必然重叠（用户三番两次截图报的就是这个）。
+   改成：所有条按**固定间距**排在同一条 `<g>` 里，滚动只做**一次平移**。
+   **刚性体不可能和自己碰撞** → 从根上消灭重叠。
+
+   无限循环用"两份拷贝 + 到界瞬间归位"：
+     · 拷贝两份，视觉完全一样
+     · 归位那一刻关掉 transition —— 因为画面一模一样，**看不出任何跳变**
+   ══════════════════════════════════════════════════════════════════ */
+/* ROW_H / VISIBLE 已在文件顶部定义，这里直接复用 */
+const COPIES = 2
+const N = CATS.length
+
+const strip = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+strip.style.willChange = 'transform'   // 只这一层在动
+svg.appendChild(strip)
+
+/* 建 2N 条，位置固定不变（局部 y = (k-2)*ROW_H，给上方留出 VISIBLE 个位） */
+const ROWS = []
+for (let k = 0; k < N * COPIES; k++) {
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+  const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+  t1.setAttribute('dominant-baseline', 'central')
+  t2.setAttribute('dominant-baseline', 'central')
+  t2.setAttribute('text-anchor', 'end')
+  t2.setAttribute('opacity', '0.78')
+  g.appendChild(path); g.appendChild(t1); g.appendChild(t2)
+  strip.appendChild(g)
+  ROWS.push({ g, path, t1, t2, K: k, cat: CATS[k % N], baseY: (k - VISIBLE) * ROW_H })
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   运动层：**rAF 手动插值**（抄 ncdai/react-wheel-picker 的做法）
+   ------------------------------------------------------------------
+   原来用 CSS transition，有三个先天问题：
+     · SVG 上的 transform 不走合成层 → 卡
+     · 快速滚动时过渡被反复重启 → 抖
+     · 到界归位要临时关过渡 → 观感断裂
+   换成 rAF 后：**全程只有一个浮点数 `pos` 在变**，每帧只写一次 transform。
+   取模归位由"两份拷贝"兜住 —— 画面一模一样，所以看不见。
+   ══════════════════════════════════════════════════════════════════ */
+let pos = 0            // 当前（浮点）
+let target = 0         // 目标（整数格）
+let rafId = 0
+const easeOutCubic = (t) => Math.pow(t - 1, 3) + 1
+
+function stopAnim() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0 } }
+
+function animateTo() {
+  stopAnim()
+  const from = pos
+  const to = target
+  const dist = Math.abs(to - from)
+  if (dist < 0.001) { pos = to; paint(); return }
+  const dur = Math.min(380, 140 + dist * 70)          // 跨得越多，给的时间略长
+  const t0 = performance.now()
+  const tick = (now) => {
+    const t = (now - t0) / dur
+    if (t < 1) { pos = from + easeOutCubic(t) * (to - from); paint(); rafId = requestAnimationFrame(tick) }
+    else { stopAnim(); pos = to; paint() }
+  }
+  rafId = requestAnimationFrame(tick)
+}
+
+function render() { target = offset; animateTo() }     // 外部只改 offset，动画交给 rAF
+
+function paint() {
+  const frac = ((pos % N) + N) % N                     // 带子的平移量（浮点）
+  strip.style.transform = 'translate(0, ' + (-frac * ROW_H).toFixed(2) + 'px)'
+  const sel = ((Math.round(pos) % N) + N) % N
+
+  for (let r = 0; r < ROWS.length; r++) {
+    const row = ROWS[r]
+    /* 这一条离带子中心的**格数差**：把 sel 对应的那条对齐到 0 */
+    let d = (row.K - VISIBLE) - frac                 // 用**浮点** frac：位置连续
+    const dRound = d - N * Math.round(d / N)          // 归到 [-N/2,N/2)：只用来定等级
+    d = dRound
+    const a = Math.abs(d)
+    if (a > VISIBLE + 0.5) { row.g.style.display = 'none'; continue }
+    row.g.style.display = ''
+
+    const c = row.cat
+    const lv = LV[Math.min(2, Math.round(a))]
+    const yc = row.baseY + VISIBLE * ROW_H            // 局部坐标（带子内固定位置）
+    const yT = yc - lv.h / 2, yB = yc + lv.h / 2
+
+    const bv = lv.blur ? 'blur(' + lv.blur + 'px)' : ''
+    if (row._b !== bv) { row.g.setAttribute('filter', bv); row._b = bv }
+    row.g.setAttribute('opacity', String(lv.op))
+
+    const wName = lv.named ? c.name.length * lv.nm + 6 : 0
+    const wDur = lv.named ? c.dur.length * lv.du * 0.62 + 4 : 0
+    const wantW = lv.named ? (wName + wDur + lv.pad) : 26
+    /* 左端贴弦位：按**这一条最靠外的那条边**算（用它在盘上的实际 y） */
+    const realY = (row.K - VISIBLE - sel) * ROW_H
+    const ryT = realY - lv.h / 2, ryB = realY + lv.h / 2
+    const yOuter = Math.max(Math.abs(ryT), Math.abs(ryB))
+    const half = Math.sqrt(Math.max(0, LIMIT * LIMIT - yOuter * yOuter))
+    const xL = -half
+    let w = wantW
+    while (w > 16 && !fitsAll(xL, ryT, ryB, w)) w -= 1
+
+    const dstr = capsulePath(yT - yc, yB - yc, xL, xL + w)
+    if (row._d !== dstr) { row.path.setAttribute('d', dstr); row._d = dstr }
+    if (row._f !== c.color) { row.path.setAttribute('fill', c.color); row._f = c.color }
+    const st = Math.round(a) === 0 ? 'rgba(255,255,255,.34)' : 'none'
+    if (row._s !== st) {
+      row.path.setAttribute('stroke', st)
+      row.path.setAttribute('stroke-width', st === 'none' ? '0' : '1.5')
+      row._s = st
+    }
+    row.path.style.cursor = 'pointer'
+    row.path.onclick = () => { offset = offset + d; render() }
+
+    const ink = inkFor(c.color)
+    if (lv.named) {
+      row.t1.style.display = ''; row.t2.style.display = ''
+      row.t1.setAttribute('x', (xL + 9).toFixed(2)); row.t1.setAttribute('y', '0')
+      row.t1.setAttribute('font-size', lv.nm); row.t1.setAttribute('font-weight', '600')
+      row.t1.setAttribute('fill', ink); row.t1.textContent = c.name
+      row.t2.setAttribute('x', (xL + w - 9).toFixed(2)); row.t2.setAttribute('y', '0')
+      row.t2.setAttribute('font-size', lv.du); row.t2.setAttribute('font-weight', '500')
+      row.t2.setAttribute('fill', ink); row.t2.textContent = c.dur
+    } else {
+      row.t1.style.display = 'none'; row.t2.style.display = 'none'
+    }
+  }
+  document.getElementById('who').textContent = '当前 · ' + CATS[sel].name
+}
+
+let acc = 0
+const MAX_STEPS = 4
+/* 抄参考实现：**限流 100ms**（最快 10 步/秒）。
+   比"一次事件跨多步"更稳 —— 快速滚动时也是匀速推进，不会突然跳一大截。 */
+let lastWheel = 0
+window.addEventListener('wheel', (e) => {
+  e.preventDefault()
+  const now = Date.now()
+  if (now - lastWheel < 100) return
+  const dir = Math.sign(e.deltaY)
+  if (!dir) return
+  lastWheel = now
+  offset += dir
+  render()
+}, { passive: false })
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+  offset += (e.key === 'ArrowDown' ? 1 : -1)
+  render()
+})
+render()
+</script>
+</body>
+</html>
