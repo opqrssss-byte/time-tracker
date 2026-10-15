@@ -1458,6 +1458,8 @@ let addRingEls = []
 let addColorIdx = 0
 let addWheelAccum = 0
 let addWheelSign = 0
+let addOkEl = null            // 盘内「添加」文字（实时显示所选色）
+let addCancelEl = null        // 盘内「取消」文字
 
 /* 建环（懒建一次）：8 个色段 = 8 个虚线圆，与主环 renderRing 同一套做法 */
 function buildAddRing() {
@@ -1486,6 +1488,35 @@ function buildAddRing() {
     g.appendChild(c)
     addRingEls.push(c)
   })
+  /* 盘内底部两个文字按钮：添加（文字=所选色，实时）/ 取消。
+     ⚠️ 命中矩形压在圆环内孔里（四角 r≈47.4 < 内孔 48.5），绝不盖到色段上——
+     否则点色段内缘会误触按钮（改尺寸时必须重新核这个数）。 */
+  const mkWord = (x, label, cls, onClick) => {
+    const gbtn = document.createElementNS(NS, 'g')
+    gbtn.setAttribute('class', 'add-btn ' + cls)
+    const hit = document.createElementNS(NS, 'rect')
+    hit.setAttribute('x', (x - 12).toFixed(1))
+    hit.setAttribute('y', '24')
+    hit.setAttribute('width', '24')
+    hit.setAttribute('height', '15')
+    hit.setAttribute('fill', 'transparent')
+    const t = document.createElementNS(NS, 'text')
+    t.setAttribute('x', x.toFixed(1))
+    t.setAttribute('y', '31.5')
+    t.setAttribute('text-anchor', 'middle')
+    t.setAttribute('dominant-baseline', 'central')
+    t.setAttribute('font-size', '11')
+    t.setAttribute('font-weight', '600')
+    t.textContent = label
+    gbtn.appendChild(hit)
+    gbtn.appendChild(t)
+    gbtn.addEventListener('click', onClick)
+    g.appendChild(gbtn)
+    return t
+  }
+  addOkEl = mkWord(-15, '添加', 'ok', () => saveWidgetCategory())
+  addCancelEl = mkWord(15, '取消', 'no', () => closeWidgetAddForm())
+  addCancelEl.setAttribute('fill', 'rgba(255,255,255,.55)')
 }
 
 function setAddRingColor(i) {
@@ -1493,13 +1524,17 @@ function setAddRingColor(i) {
   addColorIdx = ((i % n) + n) % n
   addRingEls.forEach((el, k) => {
     const sel = k === addColorIdx
-    el.style.opacity = sel ? '1' : '.42'
-    el.style.transform = sel ? 'scale(1.16)' : 'scale(1)'
+    /* 与主环同口径（2026-10-15 真机反馈后改）：其余色段**保持全色** —— 原来压到 .42，
+       用户反馈"颜色太浅、和表盘显示的深度不一致"；选中靠"微推出 + 同色辉光"区分。
+       推出从 1.16 收到 1.08：色段（42°）比主环扇区长，同样的缩放视觉上更冲，
+       用户反馈"推出的太过头"。 */
+    el.style.transform = sel ? 'scale(1.08)' : 'scale(1)'
     el.style.filter = sel ? 'drop-shadow(0 0 6px ' + WIDGET_SWATCH_COLORS[k] + ')' : ''
   })
   widgetSwatchColor = WIDGET_SWATCH_COLORS[addColorIdx]   // 与保存流程共用同一状态源
   const inp = $('widget-add-name')
   if (inp) { inp.style.color = widgetSwatchColor; inp.style.caretColor = widgetSwatchColor }
+  if (addOkEl) addOkEl.setAttribute('fill', widgetSwatchColor)   // 「添加」实时预览所选色
 }
 
 function openWidgetAddForm() {
@@ -1535,11 +1570,12 @@ function closeWidgetAddForm() {
 }
 
 /* 校验/错误反馈走表盘下方那行小字（提示条在表单打开时会被隐藏，不能用来报错）。
-   同一个元素两种状态：无错误 = 操作提示，有错误 = 红字。 */
+   默认空（盘内已有「添加 / 取消」两个可点入口 + 滚轮提示，不需要常驻文案）；
+   有错误时才出现并变红。 */
 function setAddError(msg) {
   const el = $('widget-add-note')
   if (!el) return
-  el.textContent = msg || '回车添加 · Esc 取消'
+  el.textContent = msg || ''
   el.classList.toggle('err', !!msg)
 }
 

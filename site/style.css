@@ -676,13 +676,18 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 }
 #widget-add-name {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: 104px; padding: 0; margin: 0; border: 0; outline: 0; background: transparent;
+  width: 92px; padding: 0; margin: 0; border: 0; outline: 0; background: transparent;
   box-sizing: border-box; text-align: center;
   font-family: "SF Pro Display", -apple-system, "Segoe UI", system-ui, sans-serif;
   font-size: 15px; font-weight: 600; line-height: 1.35;
   color: #4F8CFF;                                  /* 实际颜色由 JS 随所选色实时写入 */
 }
 #widget-add-name::placeholder { color: rgba(255, 255, 255, .28); font-weight: 500; }
+/* 盘内底部：添加 / 取消 两个文字按钮（用户反馈"到这一步没法取消"——
+   盘外区域在桌面置顶窗里是点击穿透的，所以可点入口必须在盘内；Enter/Esc 仍是快捷键） */
+.add-btn { cursor: pointer; }
+.add-btn text { transition: filter 140ms ease; }
+.add-btn:hover text { filter: brightness(1.35); }
 #widget-add-note {
   position: absolute; left: 50%; top: calc(100% + 10px); transform: translateX(-50%);
   white-space: nowrap; font-size: 11px; letter-spacing: .02em;
