@@ -627,33 +627,22 @@ textarea:focus { border-color: var(--primary); background: #fff; }
      · 新增项目 = 固定在底部单独一格，**只接受点击**，不进滚轮序列
    ============================================================================ */
 #widget-pick {
-  /* 比盘大一圈的方形（铺满窗口太突兀：248×368 从 152 的圆盘跳过去太重）。
-     ⚠️ 用 absolute 而非 fixed：要相对**表盘**居中，而不是相对窗口 ——
-     表盘不一定在窗口正中，用 fixed 会两者错开。 */
+  /* 只做弧排的定位容器 + "表盘护盾"（挡住背后的环/读数；切换时它们由 .arc-open 淡出）。
+     ⚠️ 这里曾有一层"柔边方形遮罩"（深色径向底 + backdrop 模糊 + mask 收边）——
+     2026-10-15 用户真机实测"滚动的时候会出来一个黑色的矩形遮罩，去掉它"，已移除。
+     现在视觉上只剩表盘内的弧排，不再有任何方形底色 / 模糊矩形。
+     用 absolute 而非 fixed：要相对**表盘**居中，而不是相对窗口。 */
   position: absolute; left: 50%; top: 50%;
   width: 208px; height: 300px;
   transform: translate(-50%, -50%);
-  border-radius: 18px;
-  overflow: hidden;
-  /* 边缘柔化，两层一起做：
-     ① 底色用径向渐变收边（中心实、边缘淡）
-     ② 再用 mask 让**整块元素**（含 backdrop-filter 的模糊）在边缘淡出。
-     ⚠️ 只做①是不够的：backdrop-filter 的作用范围是元素的矩形边界，
-        底色淡了但它背后的模糊仍然是硬边，照样突兀。 */
-  background: radial-gradient(ellipse 92% 86% at 50% 47%,
-    rgba(9, 10, 12, .88) 0%,
-    rgba(9, 10, 12, .80) 58%,
-    rgba(9, 10, 12, .52) 84%,
-    rgba(9, 10, 12, 0) 100%);
-  -webkit-backdrop-filter: blur(11px) saturate(125%);
-  backdrop-filter: blur(11px) saturate(125%);
-  -webkit-mask-image: radial-gradient(ellipse 108% 106% at 50% 50%,
-    #000 82%, rgba(0, 0, 0, .72) 92%, rgba(0, 0, 0, 0) 100%);
-  mask-image: radial-gradient(ellipse 108% 106% at 50% 50%,
-    #000 82%, rgba(0, 0, 0, .72) 92%, rgba(0, 0, 0, 0) 100%);
   opacity: 1; transition: opacity 140ms ease;
 }
 #widget-pick.hidden { opacity: 0; pointer-events: none; }
+
+/* 切换态：环 + 中心读数整体淡出，让弧排独占表盘
+   （原来靠上面的黑底遮罩盖住；黑框移除后改为显式隐藏，与弧排的淡入淡出同步） */
+#widget-ring-wrap { transition: opacity 160ms ease; }
+#widget-plate.arc-open #widget-ring-wrap { opacity: 0; pointer-events: none; }
 
 /* 弧排（v16.7 样品移植）：SVG 坐标 = 盘坐标（viewBox -76..76，圆心即原点），
    绝对定位在浮层正中 = 表盘正中。全部几何压在 LIMIT=72 内 → 永不超出圆盘；

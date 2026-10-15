@@ -128,11 +128,30 @@ for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 10, 15, 20, 31]) {
 for (const n of [2, 3, 7, 8, 15, 31]) {
   const copies = Math.max(2, Math.ceil((n + ARC_VISIBLE * 2 + 2) / n))
   for (let gi = 0; gi < n; gi++) {
-    const pos = gi - ARC_VISIBLE                  // = updatePickOverlay 写进去的 pickGoal
+    const pos = gi - ARC_VISIBLE                  // = 首次打开时 updatePickOverlay 写进去的 pickGoal
     const frac = ((pos % n) + n) % n
     const K = frac + ARC_VISIBLE                  // dRaw = K - VISIBLE - frac = 0
     ok(K < n * copies, 'map-row-missing n=' + n + ' gi=' + gi + ' K=' + K + ' rows=' + (n * copies))
     ok(K % n === gi, 'map n=' + n + ' gi=' + gi + ' K%n=' + (K % n))
+  }
+}
+
+/* 无限滚动连续性（2026-10-15 真机"弹回第一个"修复的锁）：
+   任意步进序列（跨首尾、双向、多整圈）下，arcFoldGoal 每次只推进 ±1 格
+   （绝不是 -(n-1) 整圈回跳），且折叠后居中项仍是新焦点。 */
+for (const n of [3, 5, 7, 10, 31]) {
+  let goal = -ARC_VISIBLE
+  let gi = 0
+  const seq = []
+  for (let s = 0; s < n * 3 + 2; s++) seq.push(1)       // 向下滚三圈多
+  for (let s = 0; s < n * 2 + 1; s++) seq.push(-1)      // 再向上滚两圈多
+  for (const dir of seq) {
+    gi = ((gi + dir) % n + n) % n
+    const prev = goal
+    goal = arcFoldGoal(goal, gi - ARC_VISIBLE, n)
+    ok(goal - prev === dir, 'fold-delta n=' + n + ' dir=' + dir + ' delta=' + (goal - prev))
+    const frac = ((goal % n) + n) % n
+    ok(frac === (((gi - ARC_VISIBLE) % n) + n) % n, 'fold-frac n=' + n + ' gi=' + gi + ' frac=' + frac)
   }
 }
 

@@ -925,6 +925,14 @@ function arcRowSolve(dRaw, item) {
   while (w > 16 && !arcFitsAll(xL, ryT, ryB, w)) w -= 1
   return { a, p, yT: ryT, yB: ryB, xL, w, wText, wName: wN, wDur: wD, nm, du, fadeT, visible: a <= ARC_VISIBLE + 0.5 }
 }
+/* 无限滚动的目标连续化：把「焦点 gi 的规范目标位置 g」折到与当前目标同圈、最近的一层。
+   不这么做的话，「末项 → 首项」的目标会从 -(n-1) 格整圈回跳 —— rAF 会把带子倒着滑回去，
+   观感就是"弹回第一个"（2026-10-15 用户真机实测）；折层之后每一步都只推进 1 格，
+   环上的取模只发生在渲染层（frac = pos mod n），画面完全连续。 */
+function arcFoldGoal(curGoal, g, n) {
+  if (!n) return g
+  return g + Math.round((curGoal - g) / n) * n
+}
 /* ═══ ARC-PICK:PURE-END ═══ */
 
 /* 条内文字色：亮底用深字、暗底用白字。阈值 .62 —— 再低会把中蓝/中绿也判成深字，整排就乱 */
@@ -954,6 +962,9 @@ function updatePickOverlay() {
   if (!layer) return
   const on = !!focusCatId
   layer.classList.toggle('hidden', !on)
+  /* 切换态给表盘挂 class：环 + 中心读数淡出（原来靠方形遮罩盖住，黑框已按用户要求移除） */
+  const plate = $('widget-plate')
+  if (plate) plate.classList.toggle('arc-open', on)
   if (!on) {
     stopPickLoop()
     pickOpen = false
@@ -966,10 +977,16 @@ function updatePickOverlay() {
     buildArcStrip()
   }
   const gi = pickIds.indexOf(focusCatId)
-  pickGoal = (gi < 0 ? 0 : gi) - ARC_VISIBLE
+  const g = (gi < 0 ? 0 : gi) - ARC_VISIBLE
   if (!pickOpen) {                            // 浮层刚开：直接落位，不从别处滑入
-    pickPos = pickGoal
+    pickGoal = g
+    pickPos = g
     pickOpen = true
+  } else {
+    /* ★ 连续无限滚动（2026-10-15 真机反馈修复）：目标折到同圈最近层，
+       跨首尾（末项 ↔ 首项）也只推进 ±1 格。直接写 gi-VISIBLE 会让末项→首项
+       从 -(n-1) 格整圈回跳，观感是"弹回第一个"。 */
+    pickGoal = arcFoldGoal(pickGoal, g, pickIds.length)
   }
   ensurePickLoop()
   paintArc()
