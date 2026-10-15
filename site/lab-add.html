@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新增项目 · 表盘内表单样品 v1</title>
+<style>
+  /* ══════════════════════════════════════════════════════════════
+     新增项目 · 表盘内表单样品（2026-10-15 · v1）
+     ──────────────────────────────────────────────────────────────
+     需求：把「新增项目」的填写从盘下面板搬进 152 表盘内部，重新设计。
+     本页 3 个方向（都可交互：点输入框打字 / 滚轮或点击选色 / 回车添加 / Esc 清空）：
+       A · 色环     —— 表圈语言：8 个色段绕环，滚轮转色，字随色变
+       B · 表单卡   —— 最直白：名称 + 色点行 + 添加/取消按钮
+       C · 极简光晕 —— 大字号 + 色彩刻度，整个盘子跟着所选色呼吸
+     ⚠️ 这是选型样品：不写真实数据、正式组件（app.js/index.html/style.css）未动。
+   ══════════════════════════════════════════════════════════════ */
+  html, body {
+    margin: 0; min-height: 100%; background: #0a0b0d;
+    font-family: "SF Pro Display", -apple-system, "Segoe UI", system-ui, sans-serif;
+    color: #fff;
+  }
+  #page {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 46px 24px 56px; gap: 30px;
+  }
+  h1 { margin: 0; font-size: 15px; font-weight: 500; color: rgba(255,255,255,.9); letter-spacing: .02em; }
+  #row { display: flex; flex-wrap: wrap; justify-content: center; gap: 26px 46px; max-width: 860px; }
+  .col { display: flex; flex-direction: column; align-items: center; gap: 15px; }
+
+  /* ── 表盘（与 lab-arc 同款玻璃盘）── */
+  .dial {
+    position: relative; width: 152px; height: 152px; border-radius: 50%;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 42%, rgba(255,255,255,.07), rgba(255,255,255,.015) 62%),
+      rgba(18,19,22,.92);
+    border: 1px solid rgba(255,255,255,.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .dial svg { position: absolute; left: 0; top: 0; width: 152px; height: 152px; }
+  .seg, .dot, .tick, .btn { cursor: pointer; }
+  .seg { transition: transform 160ms ease, opacity 160ms ease, filter 160ms ease;
+         transform-box: view-box; transform-origin: 50% 50%; }
+  .dot, .tick { transition: all 160ms ease; }
+  .btn { transition: opacity 140ms ease; }
+  .btn:hover { opacity: .88; }
+
+  .dial.pulse { animation: pulse 300ms ease; }
+  @keyframes pulse { 50% { transform: scale(.965); } }
+
+  /* ── 名称输入（透明覆盖在盘中，所见即所得）── */
+  .inp {
+    position: absolute; left: 50%; border: 0; outline: 0; background: transparent;
+    text-align: center; font-family: inherit; font-weight: 600;
+    padding: 0; caret-color: currentColor;
+  }
+  .inp::placeholder { color: rgba(255,255,255,.28); font-weight: 500; }
+  #inp-a { top: 50%; transform: translate(-50%,-50%); width: 104px; font-size: 15px; color: #4F8CFF; }
+  #inp-b { top: calc(50% - 22px); transform: translate(-50%,-50%); width: 100px; font-size: 14px; color: rgba(255,255,255,.95); }
+  #inp-c { top: calc(50% - 7px); transform: translate(-50%,-50%); width: 118px; font-size: 19px; color: #2FBF71; }
+
+  /* ── 说明 ── */
+  .cap { max-width: 208px; text-align: center; }
+  .cap b { display: block; font-size: 13px; font-weight: 600; color: rgba(255,255,255,.86); margin-bottom: 5px; letter-spacing: .02em; }
+  .cap span { font-size: 11.5px; line-height: 1.65; color: rgba(255,255,255,.45); }
+  .note { font-size: 11px; color: rgba(255,255,255,.32); text-align: center; line-height: 1.7; max-width: 560px; }
+  #toast {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-8px);
+    background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.14);
+    backdrop-filter: blur(10px); border-radius: 999px; padding: 7px 16px;
+    font-size: 12px; color: rgba(255,255,255,.9); opacity: 0; pointer-events: none;
+    transition: opacity 200ms ease, transform 200ms ease; white-space: nowrap;
+  }
+  #toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div id="page">
+  <h1>新增项目 · 表盘内表单 · 3 个方向</h1>
+  <div id="row">
+
+    <div class="col">
+      <div class="dial" id="dial-a">
+        <svg viewBox="-76 -76 152 152" aria-hidden="true"><g id="ring-a" transform="rotate(-90 0 0)"></g></svg>
+        <input id="inp-a" class="inp" maxlength="20" placeholder="分类名称" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="cap"><b>A · 色环</b><span>表圈语言：滚轮转色 · 点色段直选<br>字随色变 · 回车添加 · Esc 清空</span></div>
+    </div>
+
+    <div class="col">
+      <div class="dial" id="dial-b">
+        <svg viewBox="-76 -76 152 152" aria-hidden="true">
+          <rect x="-58" y="-40" width="116" height="80" rx="14" fill="rgba(255,255,255,.05)" stroke="rgba(255,255,255,.08)"/>
+          <g id="dots-b"></g>
+          <g id="btns-b"></g>
+        </svg>
+        <input id="inp-b" class="inp" maxlength="20" placeholder="分类名称" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="cap"><b>B · 表单卡</b><span>最直白：点色点选色 · 点「添加」或回车<br>按钮实时显示所选颜色 · Esc 清空</span></div>
+    </div>
+
+    <div class="col">
+      <div class="dial" id="dial-c">
+        <svg viewBox="-76 -76 152 152" aria-hidden="true">
+          <defs>
+            <radialGradient id="glow-c">
+              <stop id="glow-c-stop" offset="0%" stop-color="#2FBF71" stop-opacity=".55"/>
+              <stop offset="70%" stop-color="#000" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <circle cx="0" cy="0" r="52" fill="url(#glow-c)"/>
+          <g id="ticks-c"></g>
+        </svg>
+        <input id="inp-c" class="inp" maxlength="20" placeholder="分类名称" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="cap"><b>C · 极简光晕</b><span>大字号输入 · 滚轮扫过色刻度<br>整个盘子跟着所选色呼吸 · 回车添加</span></div>
+    </div>
+
+  </div>
+  <div class="note">样品页：交互都是真的（能打字、能滚轮、能确认），但不会写入任何数据，正式组件未改动。<br>三个方向都保留「实时预览」——你选的色就是新项目的色，在盘里先看到再确认。</div>
+</div>
+<div id="toast"></div>
+
+<script>
+const NS = 'http://www.w3.org/2000/svg'
+const PALETTE = ['#4F8CFF', '#9B6DFF', '#2FBF71', '#F2A93B', '#FF5A5A', '#23B8D5', '#F06EAA', '#8a91a3']
+const $ = (id) => document.getElementById(id)
+
+/* 亮底深字 / 暗底白字（与正式组件同口径） */
+function inkFor(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''))
+  if (!m) return '#fff'
+  const L = (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)) / 255
+  return L > 0.62 ? 'rgba(12,14,18,.92)' : 'rgba(255,255,255,.97)'
+}
+
+let toastTimer = 0
+function toast(msg) {
+  const t = $('toast')
+  t.textContent = msg
+  t.classList.add('on')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => t.classList.remove('on'), 1800)
+}
+
+/* 三个方向共享的输入行为：回车 = 添加（IME 组合中不触发）、Esc = 清空 */
+function wireInput(dialEl, inp, confirm) {
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { confirm(); return }
+    if (e.key === 'Escape') { inp.value = ''; inp.focus() }
+  })
+  /* 拖拽窗口/点盘面：点盘面任意处都聚焦输入框（交互构件自己会再聚焦回来） */
+  dialEl.addEventListener('mousedown', (e) => {
+    if (e.target === inp) return
+    setTimeout(() => inp.focus({ preventScroll: true }), 0)
+  })
+}
+function pulse(dialEl) {
+  dialEl.classList.remove('pulse')
+  void dialEl.offsetWidth
+  dialEl.classList.add('pulse')
+}
+function confirmToast(inp, color) {
+  const name = inp.value.trim()
+  if (!name) { toast('先给新项目起个名字'); inp.focus(); return }
+  toast('已添加「' + name + '」 · ' + color)
+}
+
+/* ══════════════ A · 色环：8 个色段绕环，滚轮转色 ══════════════ */
+(function () {
+  const g = $('ring-a')
+  const inp = $('inp-a')
+  const dial = $('dial-a')
+  const R = 54, SW = 11
+  const CIRC = 2 * Math.PI * R
+  const SEG = CIRC / 8, GAP = 4
+  const els = []
+  for (let i = 0; i < 8; i++) {
+    const c = document.createElementNS(NS, 'circle')
+    c.setAttribute('r', R)
+    c.setAttribute('fill', 'none')
+    c.setAttribute('stroke', PALETTE[i])
+    c.setAttribute('stroke-width', SW)
+    c.setAttribute('stroke-linecap', 'round')
+    c.setAttribute('stroke-dasharray', (SEG - GAP).toFixed(2) + ' ' + (CIRC - SEG + GAP).toFixed(2))
+    c.setAttribute('stroke-dashoffset', (-(i * SEG + GAP / 2)).toFixed(2))
+    c.setAttribute('class', 'seg')
+    c.addEventListener('click', () => { setCi(i); inp.focus({ preventScroll: true }) })
+    g.appendChild(c)
+    els.push(c)
+  }
+  let ci = 0
+  function setCi(next) {
+    ci = ((next % 8) + 8) % 8
+    els.forEach((el, i) => {
+      const sel = i === ci
+      el.style.opacity = sel ? '1' : '.42'
+      el.style.transform = sel ? 'scale(1.16)' : 'scale(1)'
+      el.style.filter = sel ? 'drop-shadow(0 0 6px ' + PALETTE[i] + ')' : ''
+    })
+    inp.style.color = PALETTE[ci]          // 字随色变：新项目的样子先看见
+    inp.style.setProperty('caret-color', PALETTE[ci])
+  }
+  dial.addEventListener('wheel', (e) => {
+    e.preventDefault()
+    setCi(ci + (e.deltaY > 0 ? 1 : -1))
+  }, { passive: false })
+  wireInput(dial, inp, () => { confirmToast(inp, PALETTE[ci]); if (inp.value.trim()) pulse(dial) })
+  setCi(0)
+})()
+
+/* ══════════════ B · 表单卡：名称 + 色点行 + 按钮 ══════════════ */
+(function () {
+  const inp = $('inp-b')
+  const dial = $('dial-b')
+  const dotsG = $('dots-b')
+  const btnsG = $('btns-b')
+  const dots = []
+  for (let i = 0; i < 8; i++) {
+    const c = document.createElementNS(NS, 'circle')
+    c.setAttribute('cx', ((i - 3.5) * 13).toFixed(1))
+    c.setAttribute('cy', '4')
+    c.setAttribute('fill', PALETTE[i])
+    c.setAttribute('class', 'dot')
+    c.addEventListener('click', () => { setCi(i); inp.focus({ preventScroll: true }) })
+    dotsG.appendChild(c)
+    dots.push(c)
+  }
+  const mkBtn = (x, label, onClick) => {
+    const gbtn = document.createElementNS(NS, 'g')
+    gbtn.setAttribute('class', 'btn')
+    const r = document.createElementNS(NS, 'rect')
+    r.setAttribute('x', x); r.setAttribute('y', '19')
+    r.setAttribute('width', '40'); r.setAttribute('height', '18')
+    r.setAttribute('rx', '9')
+    const t = document.createElementNS(NS, 'text')
+    t.setAttribute('x', x + 20); t.setAttribute('y', '28.5')
+    t.setAttribute('text-anchor', 'middle')
+    t.setAttribute('dominant-baseline', 'central')
+    t.setAttribute('font-size', '10.5')
+    t.setAttribute('font-weight', '600')
+    t.textContent = label
+    gbtn.appendChild(r); gbtn.appendChild(t)
+    gbtn.addEventListener('click', onClick)
+    btnsG.appendChild(gbtn)
+    return { r, t }
+  }
+  const cancel = mkBtn(-46, '取消', () => { inp.value = ''; inp.focus({ preventScroll: true }) })
+  cancel.r.setAttribute('fill', 'rgba(255,255,255,.08)')
+  cancel.t.setAttribute('fill', 'rgba(255,255,255,.72)')
+  const ok = mkBtn(6, '添加', () => { confirmToast(inp, PALETTE[ci]); if (inp.value.trim()) pulse(dial) })
+  let ci = 0
+  function setCi(next) {
+    ci = ((next % 8) + 8) % 8
+    dots.forEach((d, i) => {
+      const sel = i === ci
+      d.setAttribute('r', sel ? '6' : '5')
+      d.setAttribute('stroke', sel ? 'rgba(255,255,255,.55)' : 'none')
+      d.setAttribute('stroke-width', '1.5')
+      d.style.opacity = sel ? '1' : '.5'
+      d.style.filter = sel ? 'drop-shadow(0 0 5px ' + PALETTE[i] + ')' : ''
+    })
+    ok.r.setAttribute('fill', PALETTE[ci])            // 按钮实时预览所选色
+    ok.t.setAttribute('fill', inkFor(PALETTE[ci]))
+  }
+  dial.addEventListener('wheel', (e) => {
+    e.preventDefault()
+    setCi(ci + (e.deltaY > 0 ? 1 : -1))
+  }, { passive: false })
+  wireInput(dial, inp, () => { confirmToast(inp, PALETTE[ci]); if (inp.value.trim()) pulse(dial) })
+  setCi(1)
+})()
+
+/* ══════════════ C · 极简光晕：大字号 + 色刻度 ══════════════ */
+(function () {
+  const inp = $('inp-c')
+  const dial = $('dial-c')
+  const ticksG = $('ticks-c')
+  const glowStop = $('glow-c-stop')
+  const ticks = []
+  const W = 3.4, SPACING = 9
+  for (let i = 0; i < 8; i++) {
+    const r = document.createElementNS(NS, 'rect')
+    r.setAttribute('x', ((i - 3.5) * SPACING - W / 2).toFixed(1))
+    r.setAttribute('rx', '1.7')
+    r.setAttribute('width', W)
+    r.setAttribute('fill', PALETTE[i])
+    r.setAttribute('class', 'tick')
+    r.addEventListener('click', () => { setCi(i); inp.focus({ preventScroll: true }) })
+    ticksG.appendChild(r)
+    ticks.push(r)
+  }
+  let ci = 2
+  function setCi(next) {
+    ci = ((next % 8) + 8) % 8
+    ticks.forEach((t, i) => {
+      const d = Math.abs(i - ci)
+      const sel = i === ci
+      t.setAttribute('y', (sel ? 20 : 23.5).toFixed(1))
+      t.setAttribute('height', sel ? '15' : '9')
+      t.style.opacity = sel ? '1' : (d === 1 ? '.55' : d === 2 ? '.4' : '.28')   // 离选中越远越淡（同弧排的等级语言）
+      t.style.filter = sel ? 'drop-shadow(0 0 5px ' + PALETTE[i] + ')' : ''
+    })
+    inp.style.color = PALETTE[ci]
+    inp.style.setProperty('caret-color', PALETTE[ci])
+    glowStop.setAttribute('stop-color', PALETTE[ci])
+  }
+  dial.addEventListener('wheel', (e) => {
+    e.preventDefault()
+    setCi(ci + (e.deltaY > 0 ? 1 : -1))
+  }, { passive: false })
+  wireInput(dial, inp, () => { confirmToast(inp, PALETTE[ci]); if (inp.value.trim()) pulse(dial) })
+  setCi(2)
+})()
+
+/* 页面打开时聚焦 A 的输入框，直接就能打字试 */
+window.addEventListener('load', () => $('inp-a').focus({ preventScroll: true }))
+</script>
+</body>
+</html>
