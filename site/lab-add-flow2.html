@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新增项目 · 更简洁的流程 · 3 个方案（v5）</title>
+<style>
+  /* ══════════════════════════════════════════════════════════════
+     新增项目 · 流程精简 v5（2026-10-21 重做）
+     ──────────────────────────────────────────────────────────────
+     上一版（v4）的三个方案本质都是"给表单/入口做快捷键"，这一版换思路：
+     把「新建」从**一个模式**变成**滚动和打字本身的延伸**——
+       S1 · 打字即建：弧排打开就能打字，实时过滤分类；没匹配 → 回车新建（自动色）。
+            ★ 新建不再是"列表里的一站"，而是"搜不到的自然结果"；分类多了还能当搜索用。
+       S2 · 顺着滚：滚到列表末尾那条就直接打字（不点、不等），回车即建。
+            新建是"滚动到头的自然延续"，全程不换屏、没有按钮。
+       S3 · 一键直达：盘底 + 常驻（计时中也在）→ 点 → 打字 → 回车（自动色）。
+            保守基线：入口明确、路径最短，表单是轻的。
+     三个方案共同：
+       ① 颜色自动分配未用色（"选色"从必经步骤降为可选）；
+       ② 进入即接键盘——修掉"滚轮进来还要先点一下输入框"（窗口焦点 bug）；
+       ③ 回车即建（不需要"确定"按钮）；Esc = 取消。
+     Demo 都是真的：S1 可打字（含中文输入法）、S2 可滚轮滚动、S3 可点 + 走完整流程。
+     ⚠️ 几何：行距 24 / 可见窗 5~6 行 / 全部压在 LIMIT=72 内（与正式组件同一套）。
+   ══════════════════════════════════════════════════════════════ */
+  html, body {
+    margin: 0; min-height: 100%; background: #0a0b0d;
+    font-family: "SF Pro Display", -apple-system, "Segoe UI", system-ui, sans-serif;
+    color: #fff;
+  }
+  #page { display: flex; flex-direction: column; align-items: center; padding: 42px 20px 56px; gap: 28px; }
+  h1 { margin: 0; font-size: 15px; font-weight: 500; color: rgba(255,255,255,.9); letter-spacing: .02em; }
+  #row { display: flex; flex-wrap: wrap; justify-content: center; gap: 26px 46px; max-width: 880px; }
+  .col { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .dial {
+    position: relative; width: 152px; height: 152px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 42%, rgba(255,255,255,.07), rgba(255,255,255,.015) 62%),
+      rgba(18,19,22,.92);
+    border: 1px solid rgba(255,255,255,.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .dial svg { position: absolute; left: 0; top: 0; width: 152px; height: 152px; }
+  .hide { display: none !important; }
+  .plusbtn {
+    position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%);
+    width: 26px; height: 26px; border-radius: 50%;
+    background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.16);
+    color: rgba(255,255,255,.72); font-size: 15px; font-weight: 300; line-height: 1;
+    cursor: pointer; font-family: inherit; padding: 0;
+    transition: background 140ms ease, color 140ms ease;
+  }
+  .plusbtn:hover { background: rgba(255,255,255,.16); color: #fff; }
+  /* 隐形但真实的输入框（S1 用：IME 中文输入必须挂在真 input 上；查询文字镜像画在 SVG 里） */
+  .ghostinp {
+    position: absolute; left: 50%; top: 50%; width: 1px; height: 1px;
+    opacity: 0; border: 0; padding: 0; background: transparent;
+  }
+  /* S2：那条「＋新增分类」本身就是输入框（看得见） */
+  .rowinp {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    border: 0; outline: 0; background: transparent; text-align: center;
+    font-family: inherit; font-weight: 600; padding: 0; box-sizing: border-box;
+  }
+  /* S3：轻表单的输入框（看得见） */
+  .forminp {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    width: 92px; padding: 0; border: 0; outline: 0; background: transparent;
+    box-sizing: border-box; text-align: center;
+    font-family: inherit; font-size: 15px; font-weight: 600; line-height: 1.35;
+  }
+  .forminp::placeholder { color: rgba(255,255,255,.28); font-weight: 500; }
+  .cap { max-width: 224px; text-align: center; }
+  .cap b { display: block; font-size: 13px; font-weight: 600; color: rgba(255,255,255,.86); margin-bottom: 5px; letter-spacing: .02em; }
+  .cap span { font-size: 11px; line-height: 1.65; color: rgba(255,255,255,.45); }
+  .note { font-size: 11px; color: rgba(255,255,255,.32); text-align: center; line-height: 1.8; max-width: 660px; }
+  #toast {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-8px);
+    background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.14);
+    backdrop-filter: blur(10px); border-radius: 999px; padding: 7px 16px;
+    font-size: 12px; color: rgba(255,255,255,.9); opacity: 0; pointer-events: none;
+    transition: opacity 200ms ease, transform 200ms ease; white-space: nowrap;
+  }
+  #toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div id="page">
+  <h1>新增项目 · 更简洁的流程 · 3 个方案（试用：打字 / 滚轮 / 点 +）</h1>
+  <div id="row">
+
+    <div class="col">
+      <div class="dial" id="dial-s1">
+        <svg viewBox="-76 -76 152 152" aria-hidden="true"><g id="s1-rows"></g></svg>
+        <input id="s1-q" class="ghostinp" maxlength="20" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="cap"><b>S1 · 打字即建</b><span>弧排打开就直接打字：实时过滤分类<br>没有匹配 → 回车 = 新建（自动色）<br>顺带把"分类多找不到"也解决了</span></div>
+    </div>
+
+    <div class="col">
+      <div class="dial" id="dial-s2">
+        <svg viewBox="-76 -76 152 152" aria-hidden="true"><g id="s2-strip"></g></svg>
+        <input id="s2-inp" class="rowinp hide" maxlength="20" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="cap"><b>S2 · 顺着滚</b><span>滚到「＋新增分类」就直接打字<br>回车即建；有字时滚轮改颜色<br>不换屏、没有按钮</span></div>
+    </div>
+
+    <div class="col">
+      <div class="dial" id="dial-s3">
+        <svg viewBox="-76 -76 152 152" aria-hidden="true">
+          <g id="s3-idle" transform="rotate(-90 0 0)"></g>
+          <g id="s3-ring" class="hide" transform="rotate(-90 0 0)"></g>
+          <text id="s3-t" x="0" y="-8" text-anchor="middle" dominant-baseline="central" font-size="21" font-weight="600" fill="rgba(255,255,255,.94)">83:45</text>
+          <text id="s3-s" x="0" y="12" text-anchor="middle" dominant-baseline="central" font-size="11" fill="rgba(255,255,255,.65)">工作 · 计时中</text>
+          <g id="s3-dot" class="hide">
+            <circle cx="0" cy="27" r="7.5" fill="rgba(255,255,255,.14)"/>
+            <circle id="s3-dotc" cx="0" cy="27" r="6" fill="#2FBF71"/>
+          </g>
+        </svg>
+        <input id="s3-inp" class="forminp hide" maxlength="20" placeholder="分类名称" autocomplete="off" spellcheck="false">
+        <button id="s3-plus" class="plusbtn" type="button">+</button>
+      </div>
+      <div class="cap"><b>S3 · 一键直达</b><span>盘底 + 常驻（计时中也在）：点 → 打字 → 回车<br>颜色自动配好；想改再点开色环<br>保守基线：入口明确、零惊喜</span></div>
+    </div>
+
+  </div>
+  <div class="note">共同的三处：① 颜色自动分配未用色（选色降为可选）；② 进入即接键盘（修掉"还得先点一下输入框"）；
+    ③ 回车即建、Esc 取消（不需要"确定"按钮）。<br>
+    Demo 是真的：S1 能打字（中文输入法可用）、S2 能滚轮滚动并在末行就地输入、S3 能点 + 走完整流程。</div>
+</div>
+<div id="toast"></div>
+
+<script>
+const NS = 'http://www.w3.org/2000/svg'
+const PALETTE = ['#4F8CFF', '#9B6DFF', '#2FBF71', '#F2A93B', '#FF5A5A', '#23B8D5', '#F06EAA', '#8a91a3']
+const $ = (id) => document.getElementById(id)
+
+/* ── 弧排几何（与正式组件同一套口径的简化版）── */
+const ARC_LIMIT = 72, ROW_H = 24, VISIBLE = 2
+const LV = [
+  { h: 24, nm: 13, du: 11, op: 1.00, blur: 0.0 },
+  { h: 20, nm: 11, du: 9, op: 0.94, blur: 0.0 },
+  { h: 16, nm: 10, du: 8.5, op: 0.60, blur: 1.6 },
+  { h: 14, nm: 9, du: 8, op: 0.30, blur: 2.6 },
+]
+function paramsAt(a) {
+  const i = Math.min(2, Math.floor(a)), t = a - i
+  const A = LV[i], B = LV[i + 1]
+  return {
+    h: A.h + (B.h - A.h) * t, nm: A.nm + (B.nm - A.nm) * t,
+    du: A.du + (B.du - A.du) * t, op: A.op + (B.op - A.op) * t,
+    blur: A.blur + (B.blur - A.blur) * t,
+  }
+}
+function textW(s, fs) {
+  let w = 3
+  for (const ch of String(s)) w += (/[\u2E80-\u9FFF\uFF00-\uFFEF\u3000-\u303F]/.test(ch) ? 1 : 0.6) * fs
+  return w
+}
+function capsulePath(yT, yB, xL, xR) {
+  const r = Math.min((yB - yT) / 2, (xR - xL) / 2)
+  return `M ${(xL + r).toFixed(2)} ${yT.toFixed(2)} L ${(xR - r).toFixed(2)} ${yT.toFixed(2)} ` +
+    `A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(xR - r).toFixed(2)} ${yB.toFixed(2)} ` +
+    `L ${(xL + r).toFixed(2)} ${yB.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(xL + r).toFixed(2)} ${yT.toFixed(2)} Z`
+}
+function solveRow(dRaw, item) {
+  const a = Math.abs(dRaw)
+  const p = paramsAt(a)
+  const realY = dRaw * ROW_H
+  const ryT = realY - p.h / 2, ryB = realY + p.h / 2
+  const yOuter = Math.max(Math.abs(ryT), Math.abs(ryB))
+  const half = Math.sqrt(Math.max(0, ARC_LIMIT * ARC_LIMIT - yOuter * yOuter))
+  const xL = -half
+  const nm = item.add ? '+ ' + item.name : item.name
+  const du = item.dur || ''
+  const wText = textW(nm, p.nm) + (du ? textW(du, p.du) : 0) + 14
+  const w = Math.max(16, Math.min(wText, 2 * half))
+  return { a, p, ryT, ryB, xL, w, nm, du, visible: a <= VISIBLE + 0.5 }
+}
+function inkFor(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''))
+  if (!m) return '#fff'
+  const L = (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)) / 255
+  return L > 0.62 ? 'rgba(12,14,18,.92)' : 'rgba(255,255,255,.97)'
+}
+let toastTimer = 0
+function toast(msg) {
+  const t = $('toast')
+  t.textContent = msg
+  t.classList.add('on')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => t.classList.remove('on'), 2100)
+}
+
+/* 画一行（S1 / S2 共用）：g > path + t1 + t2 */
+function buildRow(g, item) {
+  const path = document.createElementNS(NS, 'path')
+  const t1 = document.createElementNS(NS, 'text')
+  const t2 = document.createElementNS(NS, 'text')
+  t1.setAttribute('dominant-baseline', 'central')
+  t2.setAttribute('dominant-baseline', 'central')
+  t2.setAttribute('text-anchor', 'end')
+  g.appendChild(path); g.appendChild(t1); g.appendChild(t2)
+  return { g, path, t1, t2, item }
+}
+function paintRow(row, dRaw, opts) {
+  const s = solveRow(dRaw, row.item)
+  const o = opts || {}
+  if (!s.visible) { row.g.style.display = 'none'; return }
+  row.g.style.display = ''
+  const op = Math.round(s.p.op * 20) / 20
+  row.g.setAttribute('opacity', String(op))
+  const bv = s.p.blur > 0.08 ? 'blur(' + (Math.round(s.p.blur * 4) / 4) + 'px)' : ''
+  row.g.setAttribute('filter', bv)
+  /* 行的 y 用 path 自己带（避免 transform 叠加），整行按 dRaw*ROW_H 定位 */
+  const yc = dRaw * ROW_H
+  const isAdd = !!row.item.add
+  const editing = o.editing
+  /* 新增行：常态=半透明白；带 o.color 时=颜色预览（S1 的新建行 / S2 的输入态）。
+     o.editing 才隐藏行内文字（S2：真输入框叠在上面） */
+  const fill = isAdd ? (o.color || 'rgba(255,255,255,.10)') : row.item.color
+  row.path.setAttribute('d', capsulePath(yc - s.p.h / 2, yc + s.p.h / 2, s.xL, s.xL + s.w))
+  row.path.setAttribute('fill', fill)
+  const st = s.a < 0.5 ? 'rgba(255,255,255,.34)' : 'none'
+  row.path.setAttribute('stroke', st)
+  row.path.setAttribute('stroke-width', st === 'none' ? '0' : '1.5')
+  if (s.a < 1.5 && !(isAdd && editing)) {
+    row.t1.style.display = ''; row.t2.style.display = ''
+    row.t1.setAttribute('x', (s.xL + 6).toFixed(2)); row.t1.setAttribute('y', yc.toFixed(2))
+    row.t1.setAttribute('font-size', s.p.nm); row.t1.setAttribute('font-weight', '600')
+    row.t1.setAttribute('fill', isAdd ? 'rgba(255,255,255,.72)' : inkFor(row.item.color))
+    row.t1.textContent = s.nm
+    row.t2.setAttribute('x', (s.xL + s.w - 6).toFixed(2)); row.t2.setAttribute('y', yc.toFixed(2))
+    row.t2.setAttribute('font-size', s.p.du); row.t2.setAttribute('font-weight', '500')
+    row.t2.setAttribute('fill', isAdd ? 'rgba(255,255,255,.72)' : inkFor(row.item.color))
+    row.t2.textContent = s.du
+  } else {
+    row.t1.style.display = 'none'; row.t2.style.display = 'none'
+  }
+  return s
+}
+
+/* ══════════ S1 · 打字即建（搜索 = 新建） ══════════ */
+(function () {
+  const CATS = [
+    { name: '工作', dur: '130:35', color: '#4F8CFF' },
+    { name: '学习', dur: '45:00', color: '#9B6DFF' },
+    { name: '运动', dur: '20:00', color: '#2FBF71' },
+    { name: '生活', dur: '65:00', color: '#F2A93B' },
+    { name: '阅读', dur: '35:00', color: '#23B8D5' },
+    { name: '摸鱼', dur: '5:00', color: '#8a91a3' },
+  ]
+  const rowsG = $('s1-rows')
+  const q = $('s1-q')
+  const dial = $('dial-s1')
+  let hint = null
+  function render() {
+    rowsG.innerHTML = ''
+    const query = q.value.trim()
+    /* 顶部状态行：没输入时是提示，输入后显示查询 */
+    hint = document.createElementNS(NS, 'text')
+    hint.setAttribute('x', '0'); hint.setAttribute('y', '-44')
+    hint.setAttribute('text-anchor', 'middle'); hint.setAttribute('dominant-baseline', 'central')
+    hint.setAttribute('font-size', '10.5')
+    hint.setAttribute('fill', query ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.28)')
+    hint.textContent = query ? '搜索「' + query + '」' : '打字＝搜索 / 新建'
+    rowsG.appendChild(hint)
+    if (!query) {
+      /* 未输入：正常弧排（前后各 2 条） */
+      CATS.forEach((c, i) => {
+        const row = buildRow(document.createElementNS(NS, 'g'), c)
+        rowsG.appendChild(row.g)
+        paintRow(row, i - VISIBLE, {})
+      })
+      return
+    }
+    const hits = CATS.filter((c) => c.name.includes(query))
+    if (hits.length) {
+      /* 有匹配：从中间往下排结果（首条最大） */
+      hits.slice(0, 3).forEach((c, i) => {
+        const row = buildRow(document.createElementNS(NS, 'g'), c)
+        rowsG.appendChild(row.g)
+        paintRow(row, i, {})
+      })
+    } else {
+      /* 无匹配：唯一一条 = 新建（自动色预览，文字照常显示） */
+      const row = buildRow(document.createElementNS(NS, 'g'), { name: query, add: true, color: null })
+      rowsG.appendChild(row.g)
+      paintRow(row, 0, { color: PALETTE[0] })
+      /* 新建行的颜色提示：右端小字「自动色」 */
+      const tip = document.createElementNS(NS, 'text')
+      tip.setAttribute('x', '0'); tip.setAttribute('y', '30')
+      tip.setAttribute('text-anchor', 'middle'); tip.setAttribute('dominant-baseline', 'central')
+      tip.setAttribute('font-size', '10')
+      tip.setAttribute('fill', 'rgba(255,255,255,.40)')
+      tip.textContent = '回车新建 · 自动配 ' + PALETTE[0]
+      rowsG.appendChild(tip)
+    }
+  }
+  q.addEventListener('input', render)
+  q.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { q.value = ''; render(); return }
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+      const query = q.value.trim()
+      if (!query) return
+      const hit = CATS.find((c) => c.name.includes(query))
+      if (hit) toast('已切换到「' + hit.name + '」 —— 打字直接命中')
+      else toast('已新建「' + query + '」 · 自动配 ' + PALETTE[0] + ' —— 回车即建')
+      q.value = ''
+      render()
+    }
+  })
+  /* 点盘面回焦：随时能接着打字 */
+  dial.addEventListener('mousedown', () => setTimeout(() => q.focus({ preventScroll: true }), 0))
+  render()
+  window.addEventListener('load', () => q.focus({ preventScroll: true }))
+})()
+
+/* ══════════ S2 · 顺着滚（末行就地输入） ══════════ */
+(function () {
+  const ITEMS = [
+    { name: '工作', dur: '130:35', color: '#4F8CFF' },
+    { name: '学习', dur: '45:00', color: '#9B6DFF' },
+    { name: '运动', dur: '20:00', color: '#2FBF71' },
+    { name: '生活', dur: '65:00', color: '#F2A93B' },
+    { name: '阅读', dur: '35:00', color: '#23B8D5' },
+    { name: '新增分类', add: true },
+  ]
+  const N = ITEMS.length
+  const ADD_IDX = N - 1
+  const strip = $('s2-strip')
+  const inp = $('s2-inp')
+  const dial = $('dial-s2')
+  const COPIES = 2
+  /* 预建行（N × 2 拷贝，取模无限循环） */
+  const rows = []
+  for (let k = 0; k < N * COPIES; k++) {
+    const g = document.createElementNS(NS, 'g')
+    strip.appendChild(g)
+    rows.push(buildRow(g, ITEMS[k % N]))
+  }
+  let pos = 0, goal = 0, raf = 0, ci = 0
+  const LERP = 0.22
+  function paint() {
+    const frac = ((pos % N) + N) % N
+    rows.forEach((row, k) => {
+      const dRaw = (k - VISIBLE) - frac
+      const editing = !!inp.value.length && (k % N) === ADD_IDX && Math.abs(dRaw) < 0.5
+      paintRow(row, dRaw, { editing, color: PALETTE[ci] })
+    })
+    /* 输入框跟随「新增分类」那条：靠近中心才出现 */
+    let addRaw = null
+    for (let k = 0; k < N * COPIES; k++) {
+      if (k % N !== ADD_IDX) continue
+      const d = (k - VISIBLE) - frac
+      if (Math.abs(d) < 0.5) { addRaw = d; break }
+    }
+    if (addRaw === null) {
+      if (inp.value) inp.value = ''
+      inp.classList.add('hide')
+      if (document.activeElement === inp) inp.blur()
+    } else {
+      const s = solveRow(addRaw, ITEMS[ADD_IDX])
+      inp.classList.remove('hide')
+      inp.style.left = (76 + s.xL + s.w / 2).toFixed(1) + 'px'
+      inp.style.top = (76 + addRaw * ROW_H).toFixed(1) + 'px'
+      inp.style.width = Math.max(30, s.w - 14) + 'px'
+      inp.style.transform = 'translate(-50%,-50%)'
+      inp.style.fontSize = '13px'
+      inp.style.color = inp.value ? inkFor(PALETTE[ci]) : 'rgba(255,255,255,.72)'
+      inp.style.caretColor = inp.value ? inkFor(PALETTE[ci]) : 'rgba(255,255,255,.5)'
+      if (document.activeElement !== inp && !inp.value) inp.focus({ preventScroll: true })
+    }
+  }
+  function loop() {
+    raf = 0
+    const diff = goal - pos
+    if (Math.abs(diff) < 0.005) { pos = goal; paint(); return }
+    pos += diff * LERP
+    paint()
+    raf = requestAnimationFrame(loop)
+  }
+  function go(d) { goal = d; if (!raf) raf = requestAnimationFrame(loop) }
+  dial.addEventListener('wheel', (e) => {
+    e.preventDefault()
+    if (inp.value) {
+      ci = ((ci + (e.deltaY > 0 ? 1 : -1)) % 8 + 8) % 8
+      paint()
+      return
+    }
+    goal += e.deltaY > 0 ? 1 : -1
+    if (!raf) raf = requestAnimationFrame(loop)
+  }, { passive: false })
+  inp.addEventListener('input', paint)
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+      const name = inp.value.trim()
+      if (!name) return
+      toast('已新建「' + name + '」 · ' + PALETTE[ci] + ' —— 顺着滚就到手')
+      inp.value = ''
+      paint()
+    }
+    if (e.key === 'Escape') { inp.value = ''; paint() }
+  })
+  dial.addEventListener('mousedown', (e) => { if (e.target !== inp) setTimeout(() => inp.focus({ preventScroll: true }), 0) })
+  /* 初始：停在工作（第 0 项居中） */
+  pos = -VISIBLE
+  goal = pos
+  paint()
+})()
+
+/* ══════════ S3 · 一键直达（+ 常驻 + 轻表单） ══════════ */
+(function () {
+  const dial = $('dial-s3')
+  const idleG = $('s3-idle')
+  const ringG = $('s3-ring')
+  const dot = $('s3-dot')
+  const dotc = $('s3-dotc')
+  const inp = $('s3-inp')
+  const plus = $('s3-plus')
+  const t = $('s3-t'), s = $('s3-s')
+  const CIRC = 2 * Math.PI * 54
+  /* 闲置态：4 个分类扇区（40/25/20/15%） */
+  let acc = 0
+  ;[[0.40, '#4F8CFF'], [0.25, '#9B6DFF'], [0.20, '#2FBF71'], [0.15, '#F2A93B']].forEach(([frac, col]) => {
+    const len = CIRC * frac
+    const c = document.createElementNS(NS, 'circle')
+    c.setAttribute('r', '54'); c.setAttribute('fill', 'none')
+    c.setAttribute('stroke', col); c.setAttribute('stroke-width', '11')
+    c.setAttribute('stroke-linecap', 'round')
+    c.setAttribute('stroke-dasharray', (len - 4).toFixed(2) + ' ' + (CIRC - len + 4).toFixed(2))
+    c.setAttribute('stroke-dashoffset', (-(acc + 2)).toFixed(2))
+    idleG.appendChild(c)
+    acc += len
+  })
+  /* 色环（点击色点才展开） */
+  const segs = []
+  PALETTE.forEach((col, i) => {
+    const SEG = CIRC / 8, GAP = 4
+    const c = document.createElementNS(NS, 'circle')
+    c.setAttribute('r', '54'); c.setAttribute('fill', 'none')
+    c.setAttribute('stroke', col); c.setAttribute('stroke-width', '11')
+    c.setAttribute('stroke-linecap', 'round')
+    c.setAttribute('stroke-dasharray', (SEG - GAP).toFixed(2) + ' ' + (CIRC - SEG + GAP).toFixed(2))
+    c.setAttribute('stroke-dashoffset', (-(i * SEG + GAP / 2)).toFixed(2))
+    c.style.cursor = 'pointer'
+    c.addEventListener('click', () => { ci = i; paint(); collapse(); inp.focus({ preventScroll: true }) })
+    ringG.appendChild(c)
+    segs.push(c)
+  })
+  let ci = 2, expanded = false
+  function paint() {
+    segs.forEach((el, k) => {
+      const sel = k === ci
+      el.style.transform = sel ? 'scale(1.08)' : 'scale(1)'
+      el.style.transformBox = 'view-box'
+      el.style.transformOrigin = '50% 50%'
+      el.style.filter = sel ? 'drop-shadow(0 0 6px ' + PALETTE[k] + ')' : ''
+    })
+    dotc.setAttribute('fill', PALETTE[ci])
+    inp.style.color = PALETTE[ci]
+    inp.style.caretColor = PALETTE[ci]
+  }
+  function expand() { expanded = true; ringG.classList.remove('hide'); dot.classList.add('hide') }
+  function collapse() { expanded = false; ringG.classList.add('hide'); dot.classList.remove('hide') }
+  function open() {
+    idleG.classList.add('hide'); t.classList.add('hide'); s.classList.add('hide'); plus.classList.add('hide')
+    dot.classList.remove('hide')
+    inp.classList.remove('hide'); inp.value = ''
+    paint()
+    setTimeout(() => inp.focus({ preventScroll: true }), 0)
+  }
+  function close() {
+    idleG.classList.remove('hide'); t.classList.remove('hide'); s.classList.remove('hide'); plus.classList.remove('hide')
+    dot.classList.add('hide'); ringG.classList.add('hide'); inp.classList.add('hide')
+    expanded = false
+  }
+  let opened = false
+  plus.addEventListener('click', () => { opened = true; open() })
+  dot.addEventListener('click', () => { if (opened) expand() })
+  dial.addEventListener('wheel', (e) => {
+    if (!opened) return
+    if (e.target === inp) return
+    e.preventDefault()
+    ci = ((ci + (e.deltaY > 0 ? 1 : -1)) % 8 + 8) % 8
+    paint()
+    if (!expanded) expand()          /* 滚一下就把色环带出来：滚轮 = 换色 */
+  }, { passive: false })
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+      const name = inp.value.trim()
+      if (!name) { toast('先给新项目起个名字'); return }
+      toast('已添加「' + name + '」 · ' + PALETTE[ci] + ' —— 点 + → 打字 → 回车')
+      opened = false
+      close()
+    }
+    if (e.key === 'Escape') { opened = false; close(); toast('已取消（未保存）') }
+  })
+  dial.addEventListener('mousedown', (e) => { if (opened && e.target !== inp) setTimeout(() => inp.focus({ preventScroll: true }), 0) })
+  paint()
+})()
+
+window.addEventListener('load', () => $('s1-q').focus({ preventScroll: true }))
+</script>
+</body>
+</html>
