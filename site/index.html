@@ -35,6 +35,10 @@
     <div id="widget-pick" class="hidden">
       <div id="widget-pick-list"></div>
       <svg id="widget-arc" viewBox="-76 -76 152 152" aria-hidden="true"></svg>
+      <!-- 新增项目 · 就地输入（2026-10-21 选型 S2）：滚到「＋新增项目」那条，
+           输入框就叠在那条荧光条上——回车即建、自动配色、滚轮改色，不换屏无按钮。
+           旧的下方面板 / 盘内色环表单（#widget-add-ring）保留作回退，不再打开。 -->
+      <input id="widget-add-inline" class="hidden" type="text" maxlength="20" autocomplete="off" spellcheck="false">
     </div>
 
     <!-- 新增项目 · 表盘内色环表单（2026-10-15 选型「A · 色环」移植）：

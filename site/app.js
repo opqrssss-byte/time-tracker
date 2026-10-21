@@ -544,7 +544,7 @@ async function enterWidget() {
   $('widget-login').classList.add('hidden')
   $('widget-plate').classList.remove('hidden')
   // 桌面常驻时也能新增分类（右键菜单入口，旧 exe 无此通道则忽略）
-  if (isElectron && window.electronAPI.onAddCat) window.electronAPI.onAddCat(() => openWidgetAddForm())
+  if (isElectron && window.electronAPI.onAddCat) window.electronAPI.onAddCat(() => openAddRow())
   await loadCategories()
   await refreshRunning()
   refreshTodayStats()
@@ -615,6 +615,10 @@ function beginDrag(e) {
   window.electronAPI.dragStart()
 }
 $('widget-plate').addEventListener('mousedown', beginDrag)
+/* 点击组件 = 显式拿键盘焦点：滚轮切入就地输入时，窗口若没焦点，打字会落空（2026-10-21） */
+$('widget-plate').addEventListener('mousedown', () => {
+  if (isElectron && window.electronAPI.focusWindow) window.electronAPI.focusWindow()
+})
 $('widget-login').addEventListener('mousedown', beginDrag)   // 未登录盘同样可拖动
 window.addEventListener('mousemove', (e) => {
   if (!dragging) return
@@ -968,6 +972,18 @@ let pickOpen = false         // 浮层开着吗（重开时直接落位，不从
 let arcStrip = null          // 整条带子（唯一被 transform 的元素）
 let arcRows = []             // [{ g, path, t1, t2, K, id, _* 记忆化字段 }]
 let arcProgRect = null       // 确认进度线（选中条底部，strip 坐标）
+const inlineEl = $('widget-add-inline')   // 新增项目 · 就地输入框（S2：叠在「＋新增项目」那条上）
+let inlineColorIdx = 0       // 就地输入时的自动配色（优先未用过的色）
+
+/* 自动配色：挑一个现有分类都没用过的色；全都用过就按分类数量轮转 */
+function unusedColorIdx() {
+  const used = {}
+  categories.forEach((c) => { used[String(c.color || '').toLowerCase()] = 1 })
+  for (let i = 0; i < WIDGET_SWATCH_COLORS.length; i++) {
+    if (!used[WIDGET_SWATCH_COLORS[i].toLowerCase()]) return i
+  }
+  return categories.length % WIDGET_SWATCH_COLORS.length
+}
 
 const ARC_LERP = 0.22        // 阻尼追赶系数/帧（60fps：1 格约 0.3s 滑到位）
 
@@ -983,6 +999,14 @@ function updatePickOverlay() {
   if (!on) {
     stopPickLoop()
     pickOpen = false
+    /* 收弧排 = 放弃正在写的草稿（就地输入是瞬态的：没回车就没创建） */
+    if (inlineEl) {
+      if (!inlineEl.classList.contains('hidden')) {
+        inlineEl.classList.add('hidden')
+        inlineEl.value = ''
+      }
+      if (document.activeElement === inlineEl) inlineEl.blur()
+    }
     return
   }
   pickData = pickList()                       // 完整列表（含新增项），不受环的截断影响
@@ -1051,6 +1075,9 @@ function paintArc() {
   arcStrip.style.transform = 'translate(0,' + (-frac * ARC_ROW_H).toFixed(2) + 'px)'
   const selIdx = focusCatId ? pickIds.indexOf(focusCatId) : -1
   const prog = selIdx >= 0 ? confirmProgress : 0
+  /* 就地输入态：焦点在「新增项目」且输入框里有字 → 该行染色、其余行压暗、滚轮改色 */
+  const typed = inlineEl ? inlineEl.value.trim() : ''
+  const editing = !!typed && focusCatId === '__add__'
   let drewProg = false
   for (let r = 0; r < arcRows.length; r++) {
     const row = arcRows[r]
@@ -1060,21 +1087,23 @@ function paintArc() {
       continue
     }
     const it = pickData[row.K % n] || {}
-    const s = arcRowSolve(dRaw, {
-      id: row.id, name: it.name,
-      durText: row.id === '__add__' ? '' : fmtMS(it.sec || 0),
-    })
+    const isAdd = row.id === '__add__'
+    /* 新增行在输入时按"用户打的名字"参与几何求解 → 荧光条跟着字变长（弧排本来的语言） */
+    const s = arcRowSolve(dRaw, (isAdd && editing)
+      ? { id: '__inline__', name: typed, durText: '' }
+      : { id: row.id, name: it.name, durText: isAdd ? '' : fmtMS(it.sec || 0) })
     if (row._vis !== true) { row.g.style.display = ''; row._vis = true }
     const c = it.color
-    const isAdd = row.id === '__add__'
 
     /* 记忆化（量化阈值）：blur 0.25px 步、op 0.05 步、字号 0.5 步 */
     const bv = s.p.blur > 0.08 ? 'blur(' + (Math.round(s.p.blur * 4) / 4) + 'px)' : ''
     if (row._b !== bv) { row.g.setAttribute('filter', bv); row._b = bv }
-    const op = Math.round(s.p.op * 20) / 20
+    const op = Math.round(s.p.op * (editing && !isAdd ? 0.35 : 1) * 20) / 20
     if (row._o !== op) { row.g.setAttribute('opacity', String(op)); row._o = op }
 
-    const fill = isAdd ? 'rgba(255,255,255,.10)' : (c || '#5a5d64')
+    const fill = isAdd
+      ? (editing ? WIDGET_SWATCH_COLORS[inlineColorIdx] : 'rgba(255,255,255,.10)')
+      : (c || '#5a5d64')
     if (row._f !== fill) { row.path.setAttribute('fill', fill); row._f = fill }
     const dstr = arcCapsulePath(-s.p.h / 2, s.p.h / 2, s.xL, s.xL + s.w)
     if (row._d !== dstr) { row.path.setAttribute('d', dstr); row._d = dstr }
@@ -1085,12 +1114,15 @@ function paintArc() {
       row._s = st
     }
     /* 选中条荧光 glow（中心附近 a<0.55） */
-    const glowCol = isAdd ? 'rgba(255,255,255,.20)' : (c || '#ffffff')
+    const glowCol = isAdd
+      ? (editing ? WIDGET_SWATCH_COLORS[inlineColorIdx] : 'rgba(255,255,255,.20)')
+      : (c || '#ffffff')
     const glow = s.a < 0.55 ? 'drop-shadow(0 0 6px ' + glowCol + ')' : ''
     if (row._g !== glow) { row.path.style.filter = glow; row._g = glow }
 
-    /* 文字：a<1.5 显示（0.9 起淡出），≥1.5 隐藏；「新增项目」只有名称 */
-    if (s.a < 1.5) {
+    /* 文字：a<1.5 显示（0.9 起淡出），≥1.5 隐藏；「新增项目」只有名称；
+       就地输入时该行不画文字（真输入框叠在上面） */
+    if (s.a < 1.5 && !(isAdd && editing)) {
       row.t1.style.display = ''
       row.t2.style.display = isAdd ? 'none' : ''
       const txtOp = Math.round((1 - s.fadeT) * 20) / 20
@@ -1130,6 +1162,42 @@ function paintArc() {
     }
   }
   if (arcProgRect && !drewProg) arcProgRect.style.display = 'none'
+
+  /* ★ 就地输入（S2）：焦点在「新增项目」且它已就位（居中）→ 把真输入框叠上去并接管焦点。
+     输入框的位置/宽度跟着该行的几何走（行会随输入变长）。滚走 → 收起并丢弃草稿。 */
+  let addShown = false
+  if (inlineEl) {
+    if (focusCatId === '__add__') {
+      for (let k = 0; k < arcRows.length; k++) {
+        const row = arcRows[k]
+        if (row.id !== '__add__') continue
+        const dRaw = (row.K - ARC_VISIBLE) - frac
+        if (Math.abs(dRaw) >= 0.5) continue
+        const it = pickData[row.K % n] || {}
+        const s = arcRowSolve(dRaw, editing
+          ? { id: '__inline__', name: typed, durText: '' }
+          : { id: row.id, name: it.name, durText: '' })
+        inlineEl.classList.remove('hidden')
+        /* #widget-pick 是 208×300、以表盘中心为中心的浮层 → 输入框坐标要加其中心偏移 */
+        inlineEl.style.left = (104 + s.xL + s.w / 2).toFixed(1) + 'px'
+        inlineEl.style.top = (150 + dRaw * ARC_ROW_H).toFixed(1) + 'px'
+        inlineEl.style.width = Math.max(30, s.w - 14) + 'px'
+        const ink = editing ? inkForBar(WIDGET_SWATCH_COLORS[inlineColorIdx]) : 'rgba(255,255,255,.72)'
+        if (inlineEl.style.color !== ink) { inlineEl.style.color = ink; inlineEl.style.caretColor = ink }
+        addShown = true
+        break
+      }
+    }
+    if (!addShown) {
+      if (!inlineEl.classList.contains('hidden')) {
+        inlineEl.classList.add('hidden')
+        if (inlineEl.value) inlineEl.value = ''       // 滚走 = 丢弃草稿（未创建）
+      }
+      if (document.activeElement === inlineEl) inlineEl.blur()
+    } else if (document.activeElement !== inlineEl && !inlineEl.value) {
+      inlineEl.focus({ preventScroll: true })          // 就位即聚焦：滚到就能直接打字
+    }
+  }
 }
 
 /* 运动层（v16.7）：rAF 阻尼追赶。输入只改 pickGoal；位置永远只有一个来源。
@@ -1163,11 +1231,14 @@ function paintPickProgress() {
 }
 
 /* 点弧排上的条 = 立即确认（与旧浮层列表点击同义）。
-   「新增项目」走新增面板 —— 它没有分类，不能当真分类开始计时。 */
+   「新增项目」：点它 = 聚焦就地输入框（弧排不关、不换屏）——2026-10-21 选型 S2。 */
 function onArcRowClick(id) {
+  if (id === '__add__') {
+    if (inlineEl) inlineEl.focus({ preventScroll: true })
+    return
+  }
   cancelConfirm()
   clearFocus()
-  if (id === '__add__') { openWidgetAddForm(); return }
   if (id === '__other__') { openOthersPanel(); return }
   clearHover()
   onSectorClick(id)
@@ -1264,6 +1335,8 @@ const mod = (a, n) => ((a % n) + n) % n
 function setFocus(id) {
   if (focusCatId === id) return
   focusCatId = id
+  /* 每次进到「新增项目」都重新配一个未用色（就地输入时的自动色） */
+  if (id === '__add__') inlineColorIdx = unusedColorIdx()
   hoverCatId = null                      // 与悬停互斥
   applyArcGeometry(ringData)             // 重算几何槽：确认进度弧要贴着选中扇区
   applyRingStateClasses()
@@ -1324,7 +1397,9 @@ function stepFocus(dir) {
   }
   setFocus(ids[idx])
   kickDetent(dir)
-  restartConfirmTimer()
+  /* 「新增项目」不吃停留确认：滚到它就位即可就地打字（S2）——不再 900ms 后弹表单 */
+  if (ids[idx] === '__add__') cancelConfirm()
+  else restartConfirmTimer()
 }
 
 /* 停顿自动确认：空闲→开始计时；运行中且不同→切换；与运行中相同→无操作（防误停） */
@@ -1351,7 +1426,7 @@ function finishConfirm() {
   const id = focusCatId
   if (!id) return
   if (id === '__other__') { clearFocus(); openOthersPanel(); return }
-  if (id === '__add__') { openWidgetAddForm(); return }   // 弧排末位的「新增项目」
+  if (id === '__add__') return               // 兜底：新增行没有停留确认（就地输入见 paintArc）
   clearFocus()
   applySectorAction(id, { viaWheel: true })
 }
@@ -1372,7 +1447,9 @@ function onWheel(e) {
   if (e.ctrlKey) return                                  // 触控板捏合缩放
   if (anyPanelOpen()) return                             // 面板打开：滚轮留给面板内部列表
   const ae = document.activeElement
-  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
+  /* 就地输入框是例外：它对着「新增项目」那条，滚轮仍有意义（有字改色 / 没字照常滚弧排） */
+  const inlineFocus = !!(ae && ae.id === 'widget-add-inline')
+  if (ae && !inlineFocus && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
   if (!ringData.length) return
 
   const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY
@@ -1398,6 +1475,13 @@ function onWheel(e) {
   const steps = Math.floor(Math.abs(wheelAccum) / WHEEL_STEP)
   if (steps < 1) return                                  // 触控板小增量先累积成一格
   wheelAccum -= dir * steps * WHEEL_STEP                 // 保留余数
+  /* 就地输入（S2）有字时：滚轮 = 改这一条的颜色，弧排不动 */
+  if (inlineFocus && ae.value.trim()) {
+    const cn = WIDGET_SWATCH_COLORS.length
+    inlineColorIdx = ((inlineColorIdx + dir * steps) % cn + cn) % cn
+    paintArc()
+    return
+  }
   const n = Math.min(steps, WHEEL_MAX_STEPS)             // 上限：一笔最多跨 6 格
   for (let i = 0; i < n; i++) stepFocus(dir)             // 滚轮向下 = 顺时针 = 下一段
 }
@@ -1451,7 +1535,8 @@ function renderSwatches() {
      · 滚轮转色（沿用主滚轮"累积一档、余数保留"的手感）、点色段直选
      · 盘中央是真 input：所见即所得，文字实时用所选色（caret 同色）
      · 回车 = 添加（IME 组合期不触发）· Esc = 取消（丢弃未保存）
-   入口（全部收敛到 openWidgetAddForm）：弧排滚到「新增项目」停留/点按、盘底 + 按钮、右键菜单。
+   入口（全部收敛到 openAddRow —— 直推弧排到「＋新增项目」）：盘底 + 按钮、右键菜单。
+   （2026-10-21 选型 S2 后，弧排滚到那条即就地输入；下面这套表单流程保留作回退，不再打开。）
    旧的盘下面板 #widget-add-panel / renderSwatches 保留作回退（当前不再打开）。 */
 const ADD_RING_R = 54
 let addRingEls = []
@@ -1550,6 +1635,27 @@ function setAddError(msg) {
   el.classList.toggle('err', !!msg)
 }
 
+/* ── 新增项目统一入口（2026-10-21 选型 S2）──
+   不再打开任何表单：直接把弧排定位到「＋新增项目」那条，输入框就地叠上去。
+   入口：盘底 + 按钮、右键菜单；弧排里滚到那条也算。 */
+function openAddRow() {
+  if (anyPanelOpen()) return
+  setFocus('__add__')
+}
+
+/* 就地输入框的键盘行为：回车 = 建（IME 组合期不触发）；有字时 Esc = 清掉这行字（不关弧排） */
+if (inlineEl) {
+  inlineEl.addEventListener('input', paintArc)
+  inlineEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { saveInlineCategory(); return }
+    if (e.key === 'Escape' && inlineEl.value) {
+      inlineEl.value = ''
+      paintArc()
+      e.stopPropagation()          // 空字再按 Esc 才交给全局 Escape（收弧排）
+    }
+  })
+}
+
 /* 滚轮转色：沿用主滚轮"累积一档、余数保留"的步进（触控板小增量先攒，
    不会一次跳过好几个色）；方向翻转清零。 */
 const addWrapEl = $('widget-add-ring')
@@ -1601,44 +1707,68 @@ function handleAuthExpired() {
   return true
 }
 
-async function saveWidgetCategory() {
-  const name = $('widget-add-name').value.trim()
-  if (!name) { setAddError('请输入分类名称'); return }
+/* 建分类（演示/沙盒本地 + 云端两条路共用）。只负责创建 + 刷新数据，不碰界面状态。
+   返回 { ok:true, id } 或 { ok:false, msg?, authExpired? } */
+async function createCategory(name, color) {
   if (IS_LOCAL) {                                  // 演示 / 沙盒：只加在本地
-    const newCat = { id: (IS_SANDBOX ? 'sb-c' : 'demo-c') + Date.now(), name, color: widgetSwatchColor, sort_order: categories.length + 1 }
+    const newCat = { id: (IS_SANDBOX ? 'sb-c' : 'demo-c') + Date.now(), name, color, sort_order: categories.length + 1 }
     categories.push(newCat)
-    setAddError('')
-    closeWidgetAddForm()
-    showToast('分类已添加' + LOCAL_SUFFIX)
-    renderRing(); renderCenter()
     sandboxSave()
-    await applySectorAction(newCat.id)             // 加完直接开始这一类
-    return
+    return { ok: true, id: newCat.id }
   }
+  if (!navigator.onLine) return { ok: false, msg: '当前离线，无法操作' }
   const maxSort = categories.reduce((m, c) => Math.max(m, c.sort_order || 0), 0)
   const { data, error } = await cloud.database.from('categories')
-    .insert({ name, color: widgetSwatchColor, sort_order: maxSort + 1 }).select()
+    .insert({ name, color, sort_order: maxSort + 1 }).select()
   if (error) {
     /* 会话过期要给"人话 + 出路"，不能只说"添加失败" —— 组件上没有别的登录入口 */
-    if (isAuthExpired(error)) { closeWidgetAddForm(); handleAuthExpired(); return }
-    /* 带上具体原因：只说"添加失败，请重试"等于没说，用户没法反馈也没法自查
-       （2026-10-12：用户报"添加没法用"，界面上却什么都看不到） */
-    setAddError(error.code === '23505'
-      ? '同名分类已存在'
-      : '添加失败：' + (error.code || '') + ' ' + (error.message || '请重试'))
-    return
+    if (isAuthExpired(error)) return { ok: false, authExpired: true }
+    /* 带上具体原因：只说"添加失败，请重试"等于没说，用户没法反馈也没法自查 */
+    return {
+      ok: false,
+      msg: error.code === '23505' ? '同名分类已存在'
+        : '添加失败：' + (error.code || '') + ' ' + (error.message || '请重试'),
+    }
   }
-  setAddError('')
-  closeWidgetAddForm()                             // 先收表单再提示，避免提示条被表盘挡住
-  showToast('分类已添加')
+  const id = (data && data[0] && data[0].id) || null
   await loadCategories()
   renderRing()
   renderCenter()
-  /* 新增完**直接开始这一类的计时**（用户："新增之后直接开始新增项目的计时就好，
-     现在新增之后还是原项目继续计时"）—— 走的是和"点这个分类"完全相同的路径，
-     所以旧项目会被正常关掉、新项目接着开始，不会出现两段并行。 */
-  const newId = (data && data[0] && data[0].id) || null
-  if (newId) await applySectorAction(newId)
+  return { ok: true, id }
+}
+
+/* S2 的主路径：就地输入回车 → 建好即开始计时、收弧排、给提示 */
+async function saveInlineCategory() {
+  if (!inlineEl) return
+  const name = inlineEl.value.trim()
+  if (!name) return
+  const color = WIDGET_SWATCH_COLORS[inlineColorIdx]
+  const res = await createCategory(name, color)
+  if (!res.ok) {
+    if (res.authExpired) { handleAuthExpired(); return }
+    showToast(res.msg || '添加失败', 2600)
+    return
+  }
+  inlineEl.value = ''
+  clearFocus()                                  // 收弧排回到常驻表盘（新分类已在计时）
+  if (res.id) await applySectorAction(res.id)   // 新增完直接开始这一类（与旧流程一致）
+  showToast('已添加「' + name + '」' + (IS_LOCAL ? LOCAL_SUFFIX : ''))
+}
+
+/* 旧表单的保存路径（回退用，当前不可达）：走同一个 createCategory 后收起表单 */
+async function saveWidgetCategory() {
+  const name = $('widget-add-name').value.trim()
+  if (!name) { setAddError('请输入分类名称'); return }
+  const res = await createCategory(name, widgetSwatchColor)
+  if (!res.ok) {
+    if (res.authExpired) { closeWidgetAddForm(); handleAuthExpired(); return }
+    setAddError(res.msg || '添加失败')
+    return
+  }
+  setAddError('')
+  closeWidgetAddForm()                            // 先收表单再提示
+  if (res.id) await applySectorAction(res.id)     // 新增完直接开始这一类
+  showToast('分类已添加' + (IS_LOCAL ? LOCAL_SUFFIX : ''))
 }
 
 /* ---------- 全部分类面板（扇区超上限时点「其他」进入） ---------- */
@@ -1701,7 +1831,7 @@ $('widget-plate').addEventListener('contextmenu', (e) => {
   if (isElectron) window.electronAPI.menu()
 })
 
-$('widget-add-cat').addEventListener('click', openWidgetAddForm)
+$('widget-add-cat').addEventListener('click', openAddRow)
 $('widget-add-name').addEventListener('input', () => setAddError(''))       // 重新输入即清掉错误
 $('btn-widget-cat-save').addEventListener('click', saveWidgetCategory)      // 旧面板按钮：保留绑定（回退用）
 $('btn-widget-cat-cancel').addEventListener('click', closeWidgetAddForm)

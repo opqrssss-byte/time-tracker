@@ -659,6 +659,19 @@ textarea:focus { border-color: var(--primary); background: #fff; }
 }
 #widget-arc path { pointer-events: auto; cursor: pointer; }
 
+/* 新增项目 · 就地输入（S2 选型 2026-10-21）
+   滚到「＋新增项目」那条就位，输入框叠在那条荧光条上（位置/宽度由 paintArc 每帧写入）。
+   显隐走全局 .hidden（display:none）。有字时条会染色 + 其余行压暗，滚轮改色。 */
+#widget-add-inline {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border: 0; outline: 0; background: transparent; text-align: center;
+  font-family: "SF Pro Display", -apple-system, "Segoe UI", system-ui, sans-serif;
+  font-size: 13px; font-weight: 600; line-height: 1.2;
+  padding: 0; box-sizing: border-box;
+  color: rgba(255, 255, 255, .72);
+}
+
 /* ── 新增项目 · 表盘内色环表单（样品 A 方向已选型，2026-10-15 移植）──
    8 个色段绕环（与主环同款：r54 / 宽 11 / 圆头）+ 盘中央真 input（所见即所得、字随色变）。
    显隐走全局 .hidden（display:none，与其它浮层一致）；下方一行小字是

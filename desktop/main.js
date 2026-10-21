@@ -97,6 +97,12 @@ if (!gotLock) {
     })
     ipcMain.on('widget:drag-end', stopDrag)
 
+    /* 点击组件时显式聚焦窗口：置顶/透明窗在部分壳与系统设置下不会自动获得键盘焦点，
+       会导致"滚到新增行、看起来能打字、实际键盘没接上"（2026-10-21）。 */
+    ipcMain.on('widget:focus', () => {
+      if (widgetWin) widgetWin.focus()
+    })
+
     ipcMain.on('widget:menu', () => {
       const autoLaunch = app.getLoginItemSettings().openAtLogin
       const menu = Menu.buildFromTemplate([

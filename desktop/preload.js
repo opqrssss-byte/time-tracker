@@ -11,4 +11,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ignoreMouse: (ignore) => ipcRenderer.send('widget:ignore-mouse', ignore), // 点击穿透
   dragStart: () => ipcRenderer.send('widget:drag-start'),                   // 任意位置拖动
   dragEnd: () => ipcRenderer.send('widget:drag-end'),
+  focusWindow: () => ipcRenderer.send('widget:focus'),                      // 点击时显式聚焦（键盘输入依赖）
 })
