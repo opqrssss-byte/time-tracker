@@ -209,7 +209,7 @@ function confirmToast(inp, color) {
   }, { passive: false })
   wireInput(dial, inp, () => { confirmToast(inp, PALETTE[ci]); if (inp.value.trim()) pulse(dial) })
   setCi(0)
-})()
+})();
 
 /* ══════════════ B · 表单卡：名称 + 色点行 + 按钮 ══════════════ */
 (function () {
@@ -271,7 +271,7 @@ function confirmToast(inp, color) {
   }, { passive: false })
   wireInput(dial, inp, () => { confirmToast(inp, PALETTE[ci]); if (inp.value.trim()) pulse(dial) })
   setCi(1)
-})()
+})();
 
 /* ══════════════ C · 极简光晕：大字号 + 色刻度 ══════════════ */
 (function () {
@@ -313,7 +313,7 @@ function confirmToast(inp, color) {
   }, { passive: false })
   wireInput(dial, inp, () => { confirmToast(inp, PALETTE[ci]); if (inp.value.trim()) pulse(dial) })
   setCi(2)
-})()
+})();
 
 /* 页面打开时聚焦 A 的输入框，直接就能打字试 */
 window.addEventListener('load', () => $('inp-a').focus({ preventScroll: true }))

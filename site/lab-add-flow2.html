@@ -173,7 +173,10 @@ function solveRow(dRaw, item) {
   const nm = item.add ? '+ ' + item.name : item.name
   const du = item.dur || ''
   const wText = textW(nm, p.nm) + (du ? textW(du, p.du) : 0) + 14
-  const w = Math.max(16, Math.min(wText, 2 * half))
+  /* a≥1.5 起收窄成纯色窄条 26（正式组件的 shrinkT 口径）——两端只留一点颜色，不是宽条 */
+  const shrinkT = Math.max(0, Math.min(1, (a - 1.5) / 0.3))
+  const wantW = a < 1.5 ? wText : wText + (26 - wText) * shrinkT
+  const w = Math.max(16, Math.min(wantW, 2 * half))
   return { a, p, ryT, ryB, xL, w, nm, du, visible: a <= VISIBLE + 0.5 }
 }
 function inkFor(hex) {
@@ -215,9 +218,9 @@ function paintRow(row, dRaw, opts) {
   const yc = dRaw * ROW_H
   const isAdd = !!row.item.add
   const editing = o.editing
-  /* 新增行：常态=半透明白；带 o.color 时=颜色预览（S1 的新建行 / S2 的输入态）。
+  /* 新增行：常态=半透明白；o.tint 时才上颜色（S1 新建预览 / S2 输入态）。
      o.editing 才隐藏行内文字（S2：真输入框叠在上面） */
-  const fill = isAdd ? (o.color || 'rgba(255,255,255,.10)') : row.item.color
+  const fill = isAdd ? (o.tint || 'rgba(255,255,255,.10)') : row.item.color
   row.path.setAttribute('d', capsulePath(yc - s.p.h / 2, yc + s.p.h / 2, s.xL, s.xL + s.w))
   row.path.setAttribute('fill', fill)
   const st = s.a < 0.5 ? 'rgba(255,255,255,.34)' : 'none'
@@ -256,14 +259,23 @@ function paintRow(row, dRaw, opts) {
   function render() {
     rowsG.innerHTML = ''
     const query = q.value.trim()
-    /* 顶部状态行：没输入时是提示，输入后显示查询 */
+    /* 提示放右侧空白区（两行小字）：arc 的行只占左半，右半一直空着 */
     hint = document.createElementNS(NS, 'text')
-    hint.setAttribute('x', '0'); hint.setAttribute('y', '-44')
+    hint.setAttribute('x', '46'); hint.setAttribute('y', '-8')
     hint.setAttribute('text-anchor', 'middle'); hint.setAttribute('dominant-baseline', 'central')
-    hint.setAttribute('font-size', '10.5')
-    hint.setAttribute('fill', query ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.28)')
-    hint.textContent = query ? '搜索「' + query + '」' : '打字＝搜索 / 新建'
+    hint.setAttribute('font-size', '10')
+    hint.setAttribute('fill', query ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.30)')
+    hint.textContent = query ? '「' + query.slice(0, 6) + '」' : '打字＝'
     rowsG.appendChild(hint)
+    if (!query) {
+      const hint2 = document.createElementNS(NS, 'text')
+      hint2.setAttribute('x', '46'); hint2.setAttribute('y', '8')
+      hint2.setAttribute('text-anchor', 'middle'); hint2.setAttribute('dominant-baseline', 'central')
+      hint2.setAttribute('font-size', '10')
+      hint2.setAttribute('fill', 'rgba(255,255,255,.30)')
+      hint2.textContent = '搜索 / 新建'
+      rowsG.appendChild(hint2)
+    }
     if (!query) {
       /* 未输入：正常弧排（前后各 2 条） */
       CATS.forEach((c, i) => {
@@ -285,7 +297,7 @@ function paintRow(row, dRaw, opts) {
       /* 无匹配：唯一一条 = 新建（自动色预览，文字照常显示） */
       const row = buildRow(document.createElementNS(NS, 'g'), { name: query, add: true, color: null })
       rowsG.appendChild(row.g)
-      paintRow(row, 0, { color: PALETTE[0] })
+      paintRow(row, 0, { tint: PALETTE[0] })
       /* 新建行的颜色提示：右端小字「自动色」 */
       const tip = document.createElementNS(NS, 'text')
       tip.setAttribute('x', '0'); tip.setAttribute('y', '30')
@@ -313,7 +325,7 @@ function paintRow(row, dRaw, opts) {
   dial.addEventListener('mousedown', () => setTimeout(() => q.focus({ preventScroll: true }), 0))
   render()
   window.addEventListener('load', () => q.focus({ preventScroll: true }))
-})()
+})();
 
 /* ══════════ S2 · 顺着滚（末行就地输入） ══════════ */
 (function () {
@@ -345,7 +357,7 @@ function paintRow(row, dRaw, opts) {
     rows.forEach((row, k) => {
       const dRaw = (k - VISIBLE) - frac
       const editing = !!inp.value.length && (k % N) === ADD_IDX && Math.abs(dRaw) < 0.5
-      paintRow(row, dRaw, { editing, color: PALETTE[ci] })
+      paintRow(row, dRaw, { editing, tint: editing ? PALETTE[ci] : null })
     })
     /* 输入框跟随「新增分类」那条：靠近中心才出现 */
     let addRaw = null
@@ -406,7 +418,7 @@ function paintRow(row, dRaw, opts) {
   pos = -VISIBLE
   goal = pos
   paint()
-})()
+})();
 
 /* ══════════ S3 · 一键直达（+ 常驻 + 轻表单） ══════════ */
 (function () {
@@ -497,7 +509,7 @@ function paintRow(row, dRaw, opts) {
   })
   dial.addEventListener('mousedown', (e) => { if (opened && e.target !== inp) setTimeout(() => inp.focus({ preventScroll: true }), 0) })
   paint()
-})()
+})();
 
 window.addEventListener('load', () => $('s1-q').focus({ preventScroll: true }))
 </script>

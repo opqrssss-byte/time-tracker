@@ -248,7 +248,7 @@ function paintSegRing(els, ci) {
   segs.forEach((el, i) => el.addEventListener('click', () => { ci = i; paint(); inp.focus({ preventScroll: true }) }))
   /* 点盘面回焦输入框 */
   dial.addEventListener('mousedown', (e) => { if (open && e.target !== inp) setTimeout(() => inp.focus({ preventScroll: true }), 0) })
-})()
+})();
 
 /* ══════════ F2 · 就地新建（弧排末行就地变输入） ══════════ */
 (function () {
@@ -351,7 +351,7 @@ function paintSegRing(els, ci) {
     ci = ((ci + (e.deltaY > 0 ? 1 : -1)) % 8 + 8) % 8
     paintColor()
   }, { passive: false })
-})()
+})();
 
 /* ══════════ F3 · 轻表单（自动色 + 色环按需展开） ══════════ */
 (function () {
@@ -398,7 +398,7 @@ function paintSegRing(els, ci) {
   })
   dial.addEventListener('mousedown', (e) => { if (e.target !== inp) setTimeout(() => inp.focus({ preventScroll: true }), 0) })
   paint()
-})()
+})();
 
 window.addEventListener('load', () => $('inp-f3').focus({ preventScroll: true }))
 </script>
