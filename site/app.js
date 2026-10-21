@@ -608,6 +608,7 @@ function beginDrag(e) {
   if (e.button !== 0) return
   if (e.target.closest('.widget-panel')) return     // 面板内（输入框等）不拖
   if (e.target.closest('#widget-add-name')) return  // 表盘内表单的输入框：拖拽留给选字
+  if (e.target.closest('#widget-add-inline')) return // 就地输入框：拖拽留给选字
   if (!canManualDrag()) return                      // 旧壳：走 -webkit-app-region
   dragging = true
   dragMoved = false
