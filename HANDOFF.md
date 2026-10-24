@@ -1,7 +1,7 @@
 # 时间追踪项目 · Agent 交接文档
 
-> 版本：**v1.1.0**（2026-09-30 存档；v1.0.0 = 初版，v1.1.0 = 桌面组件重构）｜ 用途：交给任何 agent 即可接手本项目的需求理解、开发与运维
-> 仓库：https://github.com/opqrssss-byte/time-tracker ｜ 线上：https://time-tracker-33431.app.workbuddy.host/
+> 版本：**v1.2.0**（2026-10-25 存档；v1.0.0 = 初版，v1.1.0 = 桌面组件重构，v1.2.0 = 弧排切换 + 弧排内就地新增）｜ 用途：交给任何 agent 即可接手本项目的需求理解、开发与运维
+> 仓库：https://github.com/opqrssss-byte/time-tracker ｜ 线上：https://time-tracker-33431.app.workbuddy.host/（**2026-10-25 已发布最新版**，与本地 `site/` 逐字节一致）
 
 > **新环境/新机器请先读 [`docs/SETUP-NEW-MACHINE.md`](docs/SETUP-NEW-MACHINE.md)**（环境准备 → 本地跑起来 → 改完怎么验证 → 发布与凭据恢复），再回来看本文件。
 > **接着上一轮继续干活，先读 [`docs/NEXT-SESSION.md`](docs/NEXT-SESSION.md)**（当前状态、本地 UI 开发循环、硬约束、可选美化方向）。
@@ -102,7 +102,10 @@ time_entries(id, owner_id, title DEFAULT '', category_id→categories ON DELETE 
 ## 6. 运维操作手册
 
 ### 6.1 发布网页（改完 site/ 必做）
-用内置工具 `workbuddy_sites_deploy`（directory=`<仓库>/site`，appName=时间追踪，domainPrefix=time-tracker，`entryHtml: index.html`）。**发布=覆盖线上**，需用户当次确认。
+用内置工具 `workbuddy_sites_deploy`（directory=`<仓库>/site`，appName=时间追踪，domainPrefix=time-tracker，entryHtml: index.html，**language: static**）。**发布=覆盖线上**，需用户当次确认（`userAskedToPublish: true` 只在用户本轮明确说"发布/上线"时才传）。
+
+- **最近发布：2026-10-25（v1.2.0）**：弧排切换 + 「＋新增项目」弧排内就地输入。线上 `app.js` 与本地逐字节一致（94,683B，`verified: true`）。此前线上长期停在 v1.0 旧页面，本轮已覆盖更新
+- **显式传 `language: "static"`**：`site/_verify/*.py` 会让语言探测误判成 Python 项目；`site/` 下有多份 HTML（含 `lab-*.html` 样品），故同时显式传 `entryHtml: "index.html"`
 
 - **当前应用**：`wbapp_aEuqo04CtucnCnaaQ8i9oU`（2026-10-10 在现账号下新建）；**线上链接** `https://time-tracker-33431.app.workbuddy.host/`
 - **⚠️ 发布目录必须是 `site/`**：平台按**目录路径**解析发布目标，`web/` 这个路径曾被登记给旧应用，而传 `appId`／改 `.genie` 都改变不了目标（2026-10-10 实测）→ 从 `web/` 发布永远报「无法连接原发布环境」。故当日把网页目录由 `web/` 改名为 **`site/`**，并把所有文档/打包配置同步过去。**不要把目录名改回 `web/`，也不要再换别的名字**
@@ -156,8 +159,8 @@ cd desktop && npx electron-builder --win portable --config electron-builder.prev
 
 ## 8. 待办与路线（供接手者参考优先级）
 
-1. **发布线上（最高优先）**：线上仍是 v1.0 旧页面，组件新交互/新壳都在本地完成却上不去；平台发布环境恢复后重发（发布前需用户当次确认）
-2. **正式版 exe 装机**：`dist/时间追踪-桌面组件.exe` 已含新壳（穿透/拖动/固定尺寸），但需先发布线上页面才有意义（否则加载的是旧 UI）
+1. ~~**发布线上**~~ **已完成（2026-10-25）**：线上已是 v1.2.0（弧排 + 就地新增），与本地 `site/` 逐字节一致。此后改完 `site/` 仍按 §6.1 发布（需用户当次确认）
+2. **正式版 exe 装机**：`dist/时间追踪-桌面组件.exe` 为在线组件壳（加载已发布页面）→ 线上已更新，重打并安装后即可用上弧排 + 就地新增
 3. **无暂停连续记录（用户明确的产品终局）**：24h 全时段有标签、没有"停止"；需要 win/mac/安卓/iOS/watch 端都能操作后再做。已预留三个扩展点：**原子切换**（关闭上一条+开启下一条同一时刻，消除毫秒间隙）、**跨天不断档**、**24h 覆盖率读数**
 4. 小程序发布：工程已就绪（含快速标签），等用户决定时机
 5. 同步引擎增强：失败后自动重试 + 每日定时补同步

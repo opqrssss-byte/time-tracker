@@ -3,17 +3,18 @@
 > 用法：新开对话时把**这份文件**（或 `HANDOFF.md`）交给 agent，即可无缝接手。
 > 需求定位读 `HANDOFF.md` §1；组件设计规范读 `DESIGN.md`；打包读 `desktop/PACKAGING.md`。
 
-## 一、当前状态（2026-10-10 收尾时）
+## 一、当前状态（2026-10-25 收尾时）
 
 | 项 | 状态 |
 |---|---|
-| **线上网页** | **已上线**：https://time-tracker-33431.app.workbuddy.host/ |
-| 线上应用 | `wbapp_aEuqo04CtucnCnaaQ8i9oU`（2026-10-10 在当前账号下新建；旧应用属另一个无积分账号，已弃用但旧链接未下线） |
-| 线上内容 | 新版圆形光环组件 + 滚轮切换；与本地 `site/` **逐字节一致**（已验证） |
-| 数据库 | 新环境已建 `categories` / `time_entries` + RLS + 索引，并做过写入→读回→删除往返验证；**历史数据按用户决定全部废弃** |
-| 网页目录 | **`site/`**（由 `web/` 改名而来，原因见 `HANDOFF.md` §6.1：平台按**目录路径**解析发布目标，`web/` 被登记给旧应用且传 `appId` 也改不了） |
-| 桌面 exe | 已重打（`desktop/dist/`），包内域名已换新；用户需安装新的 `时间追踪-桌面组件.exe` |
-| 未完成 | ① `git push`（GitHub 网络 502，连续失败；本地领先 2 个提交，网络恢复后 `env -u GIT_TERMINAL_PROMPT git push origin main`）② 用户侧三件事：新域名登录 / 重配 Google 同步 / 装新 exe |
+| **线上网页** | 已上线且为最新版：https://time-tracker-33431.app.workbuddy.host/ |
+| 线上应用 | `wbapp_aEuqo04CtucnCnaaQ8i9oU`（旧应用属另一个无积分账号，已弃用但旧链接未下线） |
+| 线上内容 | **v1.2.0**：弧排切换（滚轮无限滚动、跨首尾连续）+「＋新增项目」弧排内就地输入（打字→回车即建、自动配色、有字时滚轮改色）；与本地 `site/` **逐字节一致**（2026-10-25 实测 app.js 94,683B） |
+| 代码同步 | 已全部推送 GitHub `main`，tag **`v1.2.0`**；换机 `git clone` 即可继续（`node_modules`/`dist` 不入库，见 `SETUP-NEW-MACHINE.md`） |
+| 数据库 | `categories` / `time_entries` + RLS + 索引，做过写入→读回→删除往返验证；**历史数据按用户决定全部废弃** |
+| 网页目录 | **`site/`**（由 `web/` 改名而来，原因见 `HANDOFF.md` §6.1：平台按**目录路径**解析发布目标） |
+| 桌面 exe | 产物不入库（`desktop/dist/` 被 gitignore）→ 换机需按 `desktop/PACKAGING.md` 重打（约 2 分钟，需预置 winCodeSign） |
+| 未完成 | ① 小程序发布（等用户定时机）② 无暂停连续记录（等各端齐备，用户明确的产品终局）③ 弧排右半空间展示方向暂缓（用户："下次再说"）④ 用户侧：如需离线试用，自行重打预览 exe |
 
 ## 二、本地开发循环（不依赖云端、不依赖发布）
 
@@ -76,6 +77,6 @@ playwright-cli eval "fetch('/tools/widget-selftest.js').then(r=>r.text()).then(t
 
 ## 五、发布与提交（改完想上线时）
 
-- 提交：`git add` → commit → `env -u GIT_TERMINAL_PROMPT git push origin main`（不解除该变量会禁掉凭据弹窗）
-- 发布：`workbuddy_sites_deploy`（`directory=<仓库>/site`、`entryHtml=index.html`、**需用户当次确认**）；细则见 `HANDOFF.md` §6.1
+- 提交：`git add` → commit → `git push origin main`（GCM 已授权则免密；若环境里设了 `GIT_TERMINAL_PROMPT=0` 会禁掉凭据弹窗导致立即失败，用 `env -u GIT_TERMINAL_PROMPT git push origin main`）
+- 发布：`workbuddy_sites_deploy`（`directory=<仓库>/site`、`language="static"`、`entryHtml="index.html"`、**需用户当次确认**）；细则见 `HANDOFF.md` §6.1
 - **发布目录必须是 `site/`**：换回 `web/` 或改别的名字都会解析到错误的应用 / 变成小程序工程

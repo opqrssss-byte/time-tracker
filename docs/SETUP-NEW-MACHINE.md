@@ -5,11 +5,12 @@
 
 ---
 
-## 0. 一句话现状（截至 2026-09-30）
+## 0. 一句话现状（截至 2026-10-25）
 
-- 三端 + 一个 Electron 壳都在本仓库；线上页面**仍是 v1.0 旧版**，新版组件（圆形光环 + 滚轮切换）**只在本地与 exe 里**
-- 仓库 tag：`v1.0.0`（初版）、`v1.1.0`（组件重构里程碑）
-- **未完成的一件事：把新版页面发布上线**（平台发布环境此前不可达）—— 发布前需用户当次确认
+- 三端 + 一个 Electron 壳都在本仓库；**代码已全部推到 GitHub**（`main`，tag `v1.2.0`），克隆即可继续
+- 线上页面**已是最新版 v1.2.0**：弧排切换（滚轮无限滚动）+「＋新增项目」弧排内就地输入；与本地 `site/` **逐字节一致**
+- 仓库 tag：`v1.0.0`（初版）、`v1.1.0`（组件重构）、`v1.2.0`（弧排交互 + 就地新增，2026-10-25）
+- 换机后唯一的手工项：核对 `.wbapp_aEuqo04CtucnCnaaQ8i9oU.genie` 的 `localDir` 是否指向**新机器**上的 `…/site`（它是本机绝对路径，见 §4）
 
 ## 1. 环境准备
 
@@ -96,10 +97,12 @@ playwright-cli eval "fetch('/tools/sandbox-selftest.js').then(r=>r.text()).then(
 
 ## 4. 发布上线（覆盖性操作，**必须先问用户**）
 
-1. 用内置工具 `workbuddy_sites_deploy`：`directory=<仓库>/site`、`appName=时间追踪`、`domainPrefix=time-tracker`、`entryHtml=index.html`、`miniProgramRequested: true`、`userAskedToPublish: true`（**仅当用户本轮明确要求发布时才传**）
-2. 当前应用 `wbapp_aEuqo04CtucnCnaaQ8i9oU`（2026-10-10 在现账号下新建），线上链接 `https://time-tracker-33431.app.workbuddy.host/`；发布 = 覆盖线上
+1. 用内置工具 `workbuddy_sites_deploy`：`directory=<仓库>/site`、`language="static"`、`appName=时间追踪`、`domainPrefix=time-tracker`、`entryHtml="index.html"`、`userAskedToPublish: true`（**仅当用户本轮明确要求发布时才传**）
+   > 不要传 `miniProgramRequested` —— 本目录发布的是**网页**，该参数只用于"用户要小程序却发了网页"时附带提示
+2. 当前应用 `wbapp_aEuqo04CtucnCnaaQ8i9oU`（2026-10-10 在现账号下新建），线上链接 `https://time-tracker-33431.app.workbuddy.host/`；发布 = 覆盖线上。**2026-10-25 已发布 v1.2.0**（线上与本地逐字节一致）
 3. ⚠️ **目录必须用 `site/`**：平台按目录路径解析发布目标，`web/` 曾被登记给旧应用（传 `appId` 也改不了）→ 用 `web/` 发布永远失败。细则与历史见 `HANDOFF.md` §6.1
-4. 发布前核对 `.workbuddy/applications.yaml`（locator 应为上面那个 appId）与 `site/app.js` 的 `publishableKey`（须与该应用 publicConfig 一致）
+4. 发布前核对 `.workbuddy/applications.yaml`（locator 应为上面那个 appId）与 `site/app.js` 的 `publishableKey`（须与该应用 publicConfig 一致，小程序那边同一把 key）
+5. **换机必改**：`.wbapp_aEuqo04CtucnCnaaQ8i9oU.genie` 的 `localDir` 是**本机绝对路径**，克隆后要改成新机器上的 `…/site`（发布工具据此定位工程）
 
 ## 5. 克隆后必然丢失的东西（及恢复方式）
 
