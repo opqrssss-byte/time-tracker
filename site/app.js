@@ -132,7 +132,10 @@ async function fetchSyncData() {
   return { entries: data || [], categories }
 }
 
-function triggerSync() { GSync.scheduleSync(fetchSyncData) }
+function triggerSync() {
+  GSync.scheduleSync(fetchSyncData)
+  Vault.scheduleSync(fetchSyncData) // 8 秒防抖，与 gsync 错峰
+}
 
 function renderGsyncStatus(msg, isError) {
   const el = $('gsync-status')
@@ -175,6 +178,82 @@ function wireGsyncSettings() {
 
   $('btn-gsync-check').addEventListener('click', () => runGsyncDiagnose())
   $('btn-gsync-now').addEventListener('click', () => GSync.syncNow(fetchSyncData))
+}
+
+/* ========== Obsidian 库写入（引擎在 vault.js / vaultmd.js） ========== */
+function renderVaultStatus(msg, isError) {
+  const el = $('vault-status')
+  if (!el) return
+  const btn = $('btn-vault-connect')
+  const st = Vault.getState()
+
+  if (btn) {
+    if (!Vault.canWrite()) btn.textContent = '不支持直写'
+    else if (st === 'need-grant') btn.textContent = '重新授权'
+    else if (st === 'ready') btn.textContent = '重新选择目录'
+    else btn.textContent = '连接库目录'
+  }
+
+  if (msg) {
+    el.textContent = msg
+    el.style.color = isError ? '#FF5A5A' : '#2FBF71'
+    return
+  }
+
+  if (st === 'ready') {
+    const last = Vault.lastSyncAt()
+    el.textContent = last ? `已连接 · 上次写入：${new Date(last).toLocaleString('zh-CN')}` : '已连接，尚未写入'
+    el.style.color = ''
+  } else if (st === 'need-grant') {
+    el.textContent = '需要重新授权（浏览器不允许页面静默访问目录）'
+    el.style.color = '#C98A16'
+  } else {
+    el.textContent = Vault.stateText()
+    el.style.color = ''
+  }
+}
+
+Vault.onStatus(renderVaultStatus)
+Vault.init().then(() => renderVaultStatus())
+
+function wireVaultSettings() {
+  renderVaultStatus()
+  const btnConnect = $('btn-vault-connect')
+  if (!btnConnect) return
+
+  btnConnect.addEventListener('click', async () => {
+    if (!Vault.canWrite()) {
+      showToast('当前环境不支持直接写入，请改用「导出 Markdown」')
+      return
+    }
+    try {
+      if (Vault.getState() === 'need-grant') {
+        const ok = await Vault.requestPermission()
+        if (!ok) { showToast('授权未完成'); renderVaultStatus(); return }
+        showToast('授权已恢复，正在写入…')
+        renderVaultStatus()
+        await Vault.syncNow(fetchSyncData)
+        return
+      }
+      await Vault.connect()
+      showToast('已连接，正在写入…')
+      renderVaultStatus()
+      await Vault.syncNow(fetchSyncData)
+    } catch (e) {
+      if (e && e.name === 'AbortError') { showToast('已取消选择'); return }
+      showToast('连接失败：' + ((e && e.message) || e))
+    }
+  })
+
+  $('btn-vault-now').addEventListener('click', () => Vault.syncNow(fetchSyncData))
+
+  $('btn-vault-export').addEventListener('click', async () => {
+    try {
+      await Vault.exportDays(fetchSyncData)
+    } catch (e) {
+      showToast('导出失败：' + ((e && e.message) || e))
+    }
+  })
 }
 
 /* 分步自检并渲染结果 */
@@ -334,6 +413,7 @@ async function enterApp(user) {
   $('header-user').textContent = emailText
   $('settings-user').textContent = emailText ? `当前账号：${emailText}` : ''
   wireGsyncSettings()
+  wireVaultSettings()
   await loadCategories()
   await refreshRunning()
   await loadHistory()

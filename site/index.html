@@ -209,6 +209,19 @@
     </div>
 
     <div class="settings-card">
+      <div class="settings-title">Obsidian 库（本地笔记）</div>
+      <div id="vault-status" class="settings-user">检测中…</div>
+      <div class="export-row" style="margin-top:10px">
+        <button id="btn-vault-connect" class="btn-secondary" type="button">连接库目录</button>
+        <button id="btn-vault-now" class="btn-secondary" type="button">立即写入</button>
+        <button id="btn-vault-export" class="btn-secondary" type="button">导出 Markdown</button>
+      </div>
+      <p class="hint" style="text-align:left;margin-top:8px">
+        每天一篇，写入库的「日记」目录。与上面的 Google Docs 管道并存，互不影响。
+      </p>
+    </div>
+
+    <div class="settings-card">
       <div class="settings-title">数据导出</div>
       <div class="export-row">
         <select id="export-range">
@@ -265,6 +278,9 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="gsync.js"></script>
+<!-- Obsidian 库：渲染器（纯函数）+ 写入适配器。必须早于 app.js 加载 -->
+<script src="vaultmd.js"></script>
+<script src="vault.js"></script>
 <!-- 空间模型数据层（配对码/设备令牌/rpc 数据面）。未绑定时全程 no-op，
      与原有账号路径并存、互不干扰，可以分批切换调用点。 -->
 <script src="repo.js"></script>

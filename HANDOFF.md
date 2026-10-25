@@ -76,6 +76,8 @@ time_entries(id, owner_id, title DEFAULT '', category_id→categories ON DELETE 
 | `site/index.html` `app.js` `style.css` | 网页版全部（计时/记录/统计/设置/`?widget=1` 圆形组件模式/快速标签/待补充筛选/`?widget=1&demo=1` 演示模式/`?widget=1&sandbox=1` 沙盒：空数据起步 + 本机 localStorage 保存） |
 | **`DESIGN.md`** | **桌面组件的设计系统文档**（token/几何/交互规格/Do-Don't/踩坑记录）——改组件前先读它 |
 | `site/gsync.js` | Google Docs 同步引擎 + `diagnose()` 四步自检 |
+| `site/vaultmd.js` | **时间记录 → Obsidian 日记渲染器**（纯函数：`groupByDay` 显式升序 / `buildDailyNote` / `buildCategoryStub` / `pathForStub`），无 DOM 无 IO |
+| `site/vault.js` | **Obsidian 库写入适配器**：File System Access API 为主、导出 `.md` 为降级；句柄存 IndexedDB(`buddyvault/handles`)；`writeIfChanged` 内容未变不写盘；无手势时挂起等点击补授权。接口恒定、后端可换（将来加 Electron IPC 只需改 `backend()`) |
 | `site/setup-google.html` | 用户一次性 Google 配置引导（5 步） |
 | `desktop/main.js` `preload.js` `package.json` | Electron 壳（窗口/穿透/拖动/菜单 IPC + 加载地址三档优先级） |
 | `desktop/electron-builder.preview.yml` | 预览版打包配置（把 site/ 打进包，供离线试组件） |
@@ -137,6 +139,15 @@ cd desktop && npx electron-builder --win portable --config electron-builder.prev
 
 ### 6.4 小程序发布
 **不要**用 sites_deploy。路径：对话中的小程序产物卡片 → 预览 → 右上角「分享/Share」→ 试用小程序（14 天）或绑定已有小程序。隐私清单 `miniprogram/.wbapp_*.privacy.json` 已写好（仅 Email 一项）。发布时机由用户决定（当前暂缓）。
+
+### 6.5 Obsidian 库同步（与 Google Docs 管道并存）
+库路径 `C:\Users\zhangzining\Documents\Obsidian Vault`，git 管理，远端私有仓库 `obsidian-vault`。
+
+- 三条记录流：`日记/` 产品自动写（**AI 禁止手改**）、`项目/buddy小屋/` AI 每轮写、`收件箱/` 随手记
+- 设置页「Obsidian 库」：连接库目录（File System Access 授权）→ 状态变「已连接」→ 之后每次 `triggerSync` 8 秒后写入
+- **两条管道独立**：`buildDocText` 产纯文本喂 NotebookLM，`vaultmd.js` 产 Markdown 给人看。不要合并，否则一种失败会伪装成另一种失败
+- 恢复授权时按提示点「重新授权」；点过任意位置也会自动补授权（仅在有挂起任务时）
+- 写盘失败降级：按钮「导出 Markdown」→ 下载 `YYYY-MM-DD.md` → 手动拖进 `日记/`
 
 ## 7. 已知坑与禁忌
 
