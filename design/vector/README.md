@@ -16,6 +16,19 @@
 | `00-知识图谱画布.pdf` | 5 页，打印或丢给多模态模型识图 |
 | `build_workbook.py` | 生成脚本，能重建上面全部 |
 
+## 怎么拿到这些文件
+
+在任意一台机器上：
+
+```bash
+git clone https://github.com/opqrssss-byte/time-tracker.git
+cd time-tracker/design/vector
+```
+
+不想装 git 就在 GitHub 页面里直接下载：打开 `design/vector/`，点 `00-知识图谱画布.vectorcraft` → 右上角 Download raw file。
+
+只为了看一眼图的话，不用下载 `.vectorcraft`，看同目录的 PNG 就够了。
+
 ## 回家第一件事：打开它
 
 **1. 装 VectorCraft 0.18.0** —— <https://getartcraft.com>（开源、免费，Rust + WASM，约 172MB）
